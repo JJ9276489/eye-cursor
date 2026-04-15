@@ -1,0 +1,11 @@
+.DS_Store
+.cache/
+.venv/
+__pycache__/
+*.pyc
+
+data/
+logs/
+models/
+reports/
+

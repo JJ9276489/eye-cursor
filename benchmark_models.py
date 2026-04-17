@@ -19,7 +19,7 @@ from eval_report import (
     latest_screen_size,
     make_summary as make_ridge_summary,
 )
-from vision_dataset import collect_vision_captures, compute_head_normalization
+from vision_dataset import collect_vision_captures, compute_head_normalization, sample_payload_features
 from vision_eval_report import build_folds as build_vision_folds
 from vision_model import (
     EyeCropModelConfig,
@@ -221,7 +221,15 @@ def save_cached_result(key: str, result: dict) -> None:
     cache_path_for_key(key).write_text(json.dumps(payload, indent=2))
 
 
-def predict_frame_sample(model, sample, head_mean, head_scale, device: torch.device) -> tuple[float, float]:
+def predict_frame_sample(
+    model,
+    sample,
+    head_mean,
+    head_scale,
+    device: torch.device,
+    extra_mean=None,
+    extra_scale=None,
+) -> tuple[float, float]:
     left = cv2.imread(str(sample.left_path), cv2.IMREAD_GRAYSCALE)
     right = cv2.imread(str(sample.right_path), cv2.IMREAD_GRAYSCALE)
     if left is None or right is None:
@@ -234,9 +242,17 @@ def predict_frame_sample(model, sample, head_mean, head_scale, device: torch.dev
     left_tensor = torch.from_numpy(left).unsqueeze(0).unsqueeze(0).to(device)
     right_tensor = torch.from_numpy(right).unsqueeze(0).unsqueeze(0).to(device)
     head_tensor = torch.from_numpy(head.astype(np.float32)).unsqueeze(0).to(device)
+    extra_keys = tuple(model.config.extra_feature_keys)
+    if extra_keys:
+        if extra_mean is None or extra_scale is None:
+            raise ValueError("extra_mean and extra_scale are required for extra-feature models")
+        extra = (sample_payload_features(sample, extra_keys) - extra_mean) / extra_scale
+        extra_tensor = torch.from_numpy(extra.astype(np.float32)).unsqueeze(0).to(device)
+    else:
+        extra_tensor = None
 
     with torch.no_grad():
-        prediction = model(left_tensor, right_tensor, head_tensor)
+        prediction = model(left_tensor, right_tensor, head_tensor, extra_tensor)
     pred = prediction.squeeze(0).detach().cpu().numpy()
     return float(pred[0]), float(pred[1])
 
@@ -298,6 +314,8 @@ def evaluate_frame_candidate(
                     head_mean=head_mean,
                     head_scale=head_scale,
                     device=result.device,
+                    extra_mean=result.extra_mean,
+                    extra_scale=result.extra_scale,
                 )
                 err_x = abs(pred_x - sample.target_x) * width
                 err_y = abs(pred_y - sample.target_y) * height

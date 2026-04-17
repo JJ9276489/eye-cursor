@@ -162,15 +162,41 @@ def split_vision_samples(
     return train_samples, eval_samples
 
 
+def _normalize_feature_matrix(matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    mean = matrix.mean(axis=0)
+    scale = matrix.std(axis=0)
+    scale[scale < 1e-6] = 1.0
+    return mean, scale
+
+
 def compute_head_normalization(samples: list[VisionSample]) -> tuple[np.ndarray, np.ndarray]:
     if not samples:
         raise ValueError("Cannot compute normalization without training samples")
 
     matrix = np.stack([sample.head_features for sample in samples]).astype(np.float32)
-    mean = matrix.mean(axis=0)
-    scale = matrix.std(axis=0)
-    scale[scale < 1e-6] = 1.0
-    return mean, scale
+    return _normalize_feature_matrix(matrix)
+
+
+def sample_payload_features(sample: VisionSample, keys: tuple[str, ...]) -> np.ndarray:
+    values = []
+    for key in keys:
+        if key not in sample.payload:
+            raise KeyError(f"Sample is missing payload feature: {key}")
+        values.append(float(sample.payload[key]))
+    return np.asarray(values, dtype=np.float32)
+
+
+def compute_payload_feature_normalization(
+    samples: list[VisionSample],
+    keys: tuple[str, ...],
+) -> tuple[np.ndarray, np.ndarray]:
+    if not keys:
+        return np.zeros((0,), dtype=np.float32), np.ones((0,), dtype=np.float32)
+    if not samples:
+        raise ValueError("Cannot compute payload-feature normalization without training samples")
+
+    matrix = np.stack([sample_payload_features(sample, keys) for sample in samples]).astype(np.float32)
+    return _normalize_feature_matrix(matrix)
 
 
 def load_grayscale_eye_crop(path: Path) -> np.ndarray:
@@ -190,11 +216,25 @@ class EyeCropDataset(Dataset):
         head_mean: np.ndarray,
         head_scale: np.ndarray,
         augment: bool = False,
+        extra_feature_keys: tuple[str, ...] = (),
+        extra_mean: np.ndarray | None = None,
+        extra_scale: np.ndarray | None = None,
     ) -> None:
         self.samples = samples
         self.head_mean = head_mean.astype(np.float32)
         self.head_scale = head_scale.astype(np.float32)
         self.augment = augment
+        self.extra_feature_keys = extra_feature_keys
+        self.extra_mean = (
+            extra_mean.astype(np.float32)
+            if extra_mean is not None
+            else np.zeros((len(extra_feature_keys),), dtype=np.float32)
+        )
+        self.extra_scale = (
+            extra_scale.astype(np.float32)
+            if extra_scale is not None
+            else np.ones((len(extra_feature_keys),), dtype=np.float32)
+        )
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -207,12 +247,16 @@ class EyeCropDataset(Dataset):
             left_eye = self._augment_eye(left_eye)
             right_eye = self._augment_eye(right_eye)
         head_features = (sample.head_features - self.head_mean) / self.head_scale
+        extra_features = sample_payload_features(sample, self.extra_feature_keys)
+        if len(self.extra_feature_keys) > 0:
+            extra_features = (extra_features - self.extra_mean) / self.extra_scale
         target = np.array([sample.target_x, sample.target_y], dtype=np.float32)
 
         return {
             "left_eye": torch.from_numpy(left_eye).unsqueeze(0),
             "right_eye": torch.from_numpy(right_eye).unsqueeze(0),
             "head_features": torch.from_numpy(head_features),
+            "extra_features": torch.from_numpy(extra_features.astype(np.float32)),
             "target": torch.from_numpy(target),
         }
 

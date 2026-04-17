@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import hashlib
 import json
 import math
@@ -21,26 +22,47 @@ from constants import (
     VISION_LEARNING_RATE,
     VISION_WEIGHT_DECAY,
 )
-from vision_dataset import VisionCapture, VisionSample, collect_vision_captures, compute_head_normalization
+from vision_dataset import (
+    VisionCapture,
+    VisionSample,
+    collect_vision_captures,
+    compute_head_normalization,
+    sample_payload_features,
+)
 from vision_eval_report import build_folds
 from vision_model import (
     EyeCropModelConfig,
     EyeCropRegressor,
     best_frame_vision_config,
     matched_attention_frame_vision_config,
+    spatial_frame_vision_config,
+    spatial_geometry_frame_vision_config,
+    tiny_patch_transformer_frame_vision_config,
 )
 from vision_training import choose_device, seed_everything, train_frame_model
 
 
-DEFAULT_MODELS = ["attn", "concat"]
+DEFAULT_MODELS = ["concat", "spatial", "spatial_geom", "vit", "attn"]
 DEFAULT_PARAM_MULTIPLIERS = [0.5, 0.75, 1.0, 1.25, 1.5]
 DEFAULT_DATA_FRACTIONS = [0.15, 0.25, 0.4, 0.6, 0.8, 1.0]
 DEFAULT_EPOCH_BUDGETS = [4, 8, 12, 20, 28, 40, 56]
+DEFAULT_SWEEPS = ["parameters", "data", "epochs"]
 CACHE_DIR = ROOT_DIR / ".cache" / "scaling"
 PLOT_STYLE = {
     "attn": {"label": "Attention", "color": "#3b82f6"},
     "concat": {"label": "Concat", "color": "#16a34a"},
+    "spatial": {"label": "Spatial CNN", "color": "#ea580c"},
+    "spatial_geom": {"label": "Spatial CNN + Geometry", "color": "#dc2626"},
+    "vit": {"label": "Tiny Patch Transformer", "color": "#7c3aed"},
 }
+
+
+@dataclass(frozen=True)
+class PlotTransform:
+    key: str
+    title: str
+    log_x: bool
+    log_y: bool
 
 
 @dataclass(frozen=True)
@@ -54,6 +76,14 @@ class SweepSpec:
     weight_decay: float
     augment_train: bool
     metadata: dict
+
+
+PLOT_TRANSFORMS = [
+    PlotTransform("linear", "Linear", log_x=False, log_y=False),
+    PlotTransform("semilogx", "Semilog X", log_x=True, log_y=False),
+    PlotTransform("semilogy", "Semilog Y", log_x=False, log_y=True),
+    PlotTransform("loglog", "Log Log", log_x=True, log_y=True),
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -85,6 +115,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=VISION_EPOCHS)
     parser.add_argument("--lr", type=float, default=VISION_LEARNING_RATE)
     parser.add_argument("--weight-decay", type=float, default=VISION_WEIGHT_DECAY)
+    parser.add_argument(
+        "--sweeps",
+        nargs="+",
+        choices=DEFAULT_SWEEPS,
+        default=DEFAULT_SWEEPS,
+        help="Which scaling sweeps to run.",
+    )
     parser.add_argument(
         "--param-multipliers",
         type=float,
@@ -133,6 +170,7 @@ def code_fingerprint() -> str:
     digest = hashlib.sha256()
     paths = [
         ROOT_DIR / "scaling_experiments.py",
+        ROOT_DIR / "constants.py",
         ROOT_DIR / "vision_model.py",
         ROOT_DIR / "vision_training.py",
         ROOT_DIR / "vision_dataset.py",
@@ -153,6 +191,12 @@ def model_label(model_key: str) -> str:
 def base_config_for_model(model_key: str) -> EyeCropModelConfig:
     if model_key == "attn":
         return matched_attention_frame_vision_config()
+    if model_key == "spatial":
+        return spatial_frame_vision_config()
+    if model_key == "spatial_geom":
+        return spatial_geometry_frame_vision_config()
+    if model_key == "vit":
+        return tiny_patch_transformer_frame_vision_config()
     return best_frame_vision_config()
 
 
@@ -163,9 +207,19 @@ def scaled_dim(value: int, multiplier: float, minimum: int = 8, multiple: int = 
 
 def scale_config(base: EyeCropModelConfig, multiplier: float) -> EyeCropModelConfig:
     token_dim = scaled_dim(base.token_dim, multiplier, minimum=16, multiple=4)
+    patch_heads = min(base.patch_heads, token_dim)
+    while token_dim % patch_heads != 0 and patch_heads > 1:
+        patch_heads -= 1
     return EyeCropModelConfig(
         encoder_channels=tuple(scaled_dim(value, multiplier, minimum=8, multiple=8) for value in base.encoder_channels),
+        encoder_type=base.encoder_type,
+        encoder_pooling=base.encoder_pooling,
+        eye_coord_channels=base.eye_coord_channels,
         head_hidden_dims=tuple(scaled_dim(value, multiplier, minimum=16, multiple=8) for value in base.head_hidden_dims),
+        extra_feature_keys=base.extra_feature_keys,
+        extra_hidden_dims=tuple(
+            scaled_dim(value, multiplier, minimum=16, multiple=8) for value in base.extra_hidden_dims
+        ),
         regressor_hidden_dims=tuple(
             scaled_dim(value, multiplier, minimum=16, multiple=8) for value in base.regressor_hidden_dims
         ),
@@ -175,11 +229,18 @@ def scale_config(base: EyeCropModelConfig, multiplier: float) -> EyeCropModelCon
         attention_heads=base.attention_heads,
         attention_layers=base.attention_layers,
         attention_dropout=base.attention_dropout,
+        patch_size=base.patch_size,
+        patch_layers=base.patch_layers,
+        patch_heads=patch_heads,
+        patch_dropout=base.patch_dropout,
     )
 
 
 def model_param_count(config: EyeCropModelConfig) -> int:
-    model = EyeCropRegressor(config=config)
+    model = EyeCropRegressor(
+        extra_feature_dim=len(config.extra_feature_keys),
+        config=config,
+    )
     return sum(parameter.numel() for parameter in model.parameters())
 
 
@@ -199,6 +260,8 @@ def predict_sample(
     head_mean: np.ndarray,
     head_scale: np.ndarray,
     device: torch.device,
+    extra_mean: np.ndarray | None = None,
+    extra_scale: np.ndarray | None = None,
 ) -> tuple[float, float]:
     left_eye = load_eye(sample.left_path)
     right_eye = load_eye(sample.right_path)
@@ -207,8 +270,16 @@ def predict_sample(
     left_tensor = torch.from_numpy(left_eye).unsqueeze(0).unsqueeze(0).to(device)
     right_tensor = torch.from_numpy(right_eye).unsqueeze(0).unsqueeze(0).to(device)
     head_tensor = torch.from_numpy(head.astype(np.float32)).unsqueeze(0).to(device)
+    extra_keys = tuple(model.config.extra_feature_keys)
+    if extra_keys:
+        if extra_mean is None or extra_scale is None:
+            raise ValueError("extra_mean and extra_scale are required for extra-feature models")
+        extra_features = (sample_payload_features(sample, extra_keys) - extra_mean) / extra_scale
+        extra_tensor = torch.from_numpy(extra_features.astype(np.float32)).unsqueeze(0).to(device)
+    else:
+        extra_tensor = None
     with torch.no_grad():
-        prediction = model(left_tensor, right_tensor, head_tensor)
+        prediction = model(left_tensor, right_tensor, head_tensor, extra_tensor)
     output = prediction.squeeze(0).detach().cpu().numpy()
     return float(output[0]), float(output[1])
 
@@ -271,6 +342,8 @@ def capture_metric_summary(
     head_scale: np.ndarray,
     screen_size: tuple[int, int],
     device: torch.device,
+    extra_mean: np.ndarray | None = None,
+    extra_scale: np.ndarray | None = None,
 ) -> dict[str, float]:
     width, height = screen_size
     frame_err_x: list[float] = []
@@ -289,6 +362,8 @@ def capture_metric_summary(
                 head_mean=head_mean,
                 head_scale=head_scale,
                 device=device,
+                extra_mean=extra_mean,
+                extra_scale=extra_scale,
             )
             err_x = abs(pred_x - sample.target_x) * width
             err_y = abs(pred_y - sample.target_y) * height
@@ -396,6 +471,8 @@ def evaluate_spec_on_fold(
         head_scale=head_scale,
         screen_size=screen_size,
         device=result.device,
+        extra_mean=result.extra_mean,
+        extra_scale=result.extra_scale,
     )
     metrics["best_epoch"] = result.best_epoch
     metrics["epochs_trained"] = result.epochs_trained
@@ -535,10 +612,12 @@ def write_summary_text(results: dict, output_path: Path) -> None:
         f"Models: {', '.join(results['models'])}",
         "",
     ]
-    for sweep_name in ("parameters", "data", "epochs"):
+    for sweep_name in results["sweep_order"]:
         lines.append(sweep_name.capitalize())
         for model_key in results["models"]:
-            series = results["sweeps"][sweep_name][model_key]
+            series = results["sweeps"].get(sweep_name, {}).get(model_key, [])
+            if not series:
+                continue
             best = min(series, key=lambda item: item["overall"]["capture_mae_distance_px"])
             lines.append(
                 f"- {model_label(model_key)} best: "
@@ -549,61 +628,237 @@ def write_summary_text(results: dict, output_path: Path) -> None:
     output_path.write_text("\n".join(lines).rstrip() + "\n")
 
 
-def plot_sweep(results: dict, sweep_name: str, output_path: Path) -> None:
+def write_points_csv(results: dict, output_path: Path) -> None:
+    columns = [
+        "mode",
+        "sweep",
+        "model",
+        "spec_name",
+        "parameter_count",
+        "param_multiplier",
+        "data_fraction",
+        "epoch_budget",
+        "train_sample_count",
+        "eval_sample_count",
+        "capture_mae_distance_px",
+        "capture_mae_x_px",
+        "capture_mae_y_px",
+        "frame_mae_distance_px",
+        "frame_mae_x_px",
+        "frame_mae_y_px",
+    ]
+    with output_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=columns)
+        writer.writeheader()
+        for sweep_name in results["sweep_order"]:
+            for model_key in results["models"]:
+                for item in results["sweeps"].get(sweep_name, {}).get(model_key, []):
+                    metadata = item["metadata"]
+                    overall = item["overall"]
+                    writer.writerow(
+                        {
+                            "mode": results["mode"],
+                            "sweep": sweep_name,
+                            "model": model_key,
+                            "spec_name": item["spec_name"],
+                            "parameter_count": item["parameter_count"],
+                            "param_multiplier": metadata.get("param_multiplier"),
+                            "data_fraction": metadata.get("data_fraction"),
+                            "epoch_budget": metadata.get("epoch_budget"),
+                            "train_sample_count": overall["train_sample_count"],
+                            "eval_sample_count": overall["eval_sample_count"],
+                            "capture_mae_distance_px": overall["capture_mae_distance_px"],
+                            "capture_mae_x_px": overall["capture_mae_x_px"],
+                            "capture_mae_y_px": overall["capture_mae_y_px"],
+                            "frame_mae_distance_px": overall["frame_mae_distance_px"],
+                            "frame_mae_x_px": overall["frame_mae_x_px"],
+                            "frame_mae_y_px": overall["frame_mae_y_px"],
+                        }
+                    )
+
+
+def sweep_xy(item: dict, sweep_name: str) -> tuple[float, float, str]:
+    if sweep_name == "parameters":
+        return (
+            float(item["parameter_count"]),
+            float(item["overall"]["capture_mae_distance_px"]),
+            "Parameter Count",
+        )
+    if sweep_name == "data":
+        return (
+            float(item["overall"]["train_sample_count"]),
+            float(item["overall"]["capture_mae_distance_px"]),
+            "Train Samples",
+        )
+    return (
+        float(item["metadata"]["epoch_budget"]),
+        float(item["overall"]["capture_mae_distance_px"]),
+        "Epoch Budget",
+    )
+
+
+def series_xy(series: list[dict], sweep_name: str) -> tuple[list[float], list[float], str]:
+    points = [sweep_xy(item, sweep_name) for item in series]
+    points.sort(key=lambda item: item[0])
+    x_values = [item[0] for item in points]
+    y_values = [item[1] for item in points]
+    x_label = points[0][2] if points else ""
+    return x_values, y_values, x_label
+
+
+def transformed_for_fit(
+    x_values: list[float],
+    y_values: list[float],
+    transform: PlotTransform,
+) -> tuple[np.ndarray, np.ndarray]:
+    x_array = np.asarray(x_values, dtype=np.float64)
+    y_array = np.asarray(y_values, dtype=np.float64)
+    mask = np.isfinite(x_array) & np.isfinite(y_array)
+    if transform.log_x:
+        mask &= x_array > 0
+    if transform.log_y:
+        mask &= y_array > 0
+    x_array = x_array[mask]
+    y_array = y_array[mask]
+    if transform.log_x:
+        x_array = np.log10(x_array)
+    if transform.log_y:
+        y_array = np.log10(y_array)
+    return x_array, y_array
+
+
+def fit_r2(x_values: np.ndarray, y_values: np.ndarray) -> float | None:
+    if len(x_values) < 3:
+        return None
+    if float(np.ptp(x_values)) == 0.0 or float(np.ptp(y_values)) == 0.0:
+        return None
+    slope, intercept = np.polyfit(x_values, y_values, deg=1)
+    predicted = slope * x_values + intercept
+    ss_res = float(np.sum((y_values - predicted) ** 2))
+    ss_tot = float(np.sum((y_values - np.mean(y_values)) ** 2))
+    if ss_tot <= 0.0:
+        return None
+    return 1.0 - ss_res / ss_tot
+
+
+def plot_sweep(
+    results: dict,
+    sweep_name: str,
+    output_path: Path,
+    transform: PlotTransform = PLOT_TRANSFORMS[0],
+) -> None:
     plt.figure(figsize=(8, 5))
     for model_key in results["models"]:
-        series = results["sweeps"][sweep_name][model_key]
-        if sweep_name == "parameters":
-            x_values = [item["parameter_count"] for item in series]
-            x_label = "Parameter Count"
-        elif sweep_name == "data":
-            x_values = [item["overall"]["train_sample_count"] for item in series]
-            x_label = "Train Samples"
-        else:
-            x_values = [item["metadata"]["epoch_budget"] for item in series]
-            x_label = "Epoch Budget"
-        y_values = [item["overall"]["capture_mae_distance_px"] for item in series]
+        series = results["sweeps"].get(sweep_name, {}).get(model_key, [])
+        if not series:
+            continue
+        x_values, y_values, x_label = series_xy(series, sweep_name)
         style = PLOT_STYLE[model_key]
         plt.plot(x_values, y_values, marker="o", label=style["label"], color=style["color"])
 
-    plt.title(f"{sweep_name.capitalize()} Sweep ({results['mode']})")
+    plt.title(f"{sweep_name.capitalize()} Sweep ({results['mode']}, {transform.title})")
     plt.xlabel(x_label)
     plt.ylabel("Capture MAE Distance (px)")
-    plt.grid(alpha=0.25)
+    if transform.log_x:
+        plt.xscale("log")
+    if transform.log_y:
+        plt.yscale("log")
+    plt.grid(alpha=0.25, which="both")
     plt.legend()
     plt.tight_layout()
     plt.savefig(output_path, dpi=180)
     plt.close()
 
 
-def plot_combined(results: dict, output_path: Path) -> None:
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
-    sweep_order = ["parameters", "data", "epochs"]
-    for axis, sweep_name in zip(axes, sweep_order, strict=True):
+def plot_combined(
+    results: dict,
+    output_path: Path,
+    transform: PlotTransform = PLOT_TRANSFORMS[0],
+) -> None:
+    sweep_order = results["sweep_order"]
+    fig, axes = plt.subplots(1, len(sweep_order), figsize=(5 * len(sweep_order), 4.5), squeeze=False)
+    for axis, sweep_name in zip(axes[0], sweep_order, strict=True):
         for model_key in results["models"]:
-            series = results["sweeps"][sweep_name][model_key]
-            if sweep_name == "parameters":
-                x_values = [item["parameter_count"] for item in series]
-                x_label = "Params"
-            elif sweep_name == "data":
-                x_values = [item["overall"]["train_sample_count"] for item in series]
-                x_label = "Train Samples"
-            else:
-                x_values = [item["metadata"]["epoch_budget"] for item in series]
-                x_label = "Epochs"
-            y_values = [item["overall"]["capture_mae_distance_px"] for item in series]
+            series = results["sweeps"].get(sweep_name, {}).get(model_key, [])
+            if not series:
+                continue
+            x_values, y_values, x_label = series_xy(series, sweep_name)
             style = PLOT_STYLE[model_key]
             axis.plot(x_values, y_values, marker="o", label=style["label"], color=style["color"])
             axis.set_xlabel(x_label)
+            if transform.log_x:
+                axis.set_xscale("log")
+            if transform.log_y:
+                axis.set_yscale("log")
         axis.set_title(sweep_name.capitalize())
         axis.set_ylabel("Capture MAE (px)")
-        axis.grid(alpha=0.25)
-    handles, labels = axes[0].get_legend_handles_labels()
+        axis.grid(alpha=0.25, which="both")
+    handles, labels = axes[0][0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper center", ncol=len(results["models"]))
-    fig.suptitle(f"Scaling Experiments ({results['mode']})")
+    fig.suptitle(f"Scaling Experiments ({results['mode']}, {transform.title})")
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     fig.savefig(output_path, dpi=180)
     plt.close(fig)
+
+
+def write_transform_fit_summary(results: dict, output_dir: Path) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    lines = ["Scaling Transform Fit Summary", ""]
+
+    for sweep_name in results["sweep_order"]:
+        for model_key in results["models"]:
+            series = results["sweeps"].get(sweep_name, {}).get(model_key, [])
+            if len(series) < 2:
+                continue
+            x_values, y_values, _ = series_xy(series, sweep_name)
+            scored_rows = []
+            for transform in PLOT_TRANSFORMS:
+                fit_x, fit_y = transformed_for_fit(x_values, y_values, transform)
+                r2 = fit_r2(fit_x, fit_y)
+                row = {
+                    "sweep": sweep_name,
+                    "model": model_key,
+                    "transform": transform.key,
+                    "points": len(fit_x),
+                    "r2": "" if r2 is None else f"{r2:.6f}",
+                }
+                rows.append(row)
+                if r2 is not None:
+                    scored_rows.append(row)
+            if scored_rows:
+                best = max(scored_rows, key=lambda row: float(row["r2"]))
+                lines.append(
+                    f"{sweep_name} / {model_label(model_key)}: "
+                    f"best={best['transform']} r2={best['r2']}"
+                )
+            else:
+                lines.append(f"{sweep_name} / {model_label(model_key)}: not enough points for R2")
+
+    with (output_dir / "fit_summary.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["sweep", "model", "transform", "points", "r2"])
+        writer.writeheader()
+        writer.writerows(rows)
+    (output_dir / "fit_summary.txt").write_text("\n".join(lines).rstrip() + "\n")
+
+
+def write_plots(results: dict, output_dir: Path) -> None:
+    for transform in PLOT_TRANSFORMS:
+        suffix = "" if transform.key == "linear" else f"_{transform.key}"
+        for sweep_name in results["sweep_order"]:
+            filename_prefix = "params" if sweep_name == "parameters" else sweep_name
+            plot_sweep(
+                results,
+                sweep_name,
+                output_dir / f"{filename_prefix}_vs_capture_mae{suffix}.png",
+                transform=transform,
+            )
+        plot_combined(
+            results,
+            output_dir / f"combined_scaling{suffix}.png",
+            transform=transform,
+        )
+    write_transform_fit_summary(results, output_dir / "transforms")
 
 
 def main() -> None:
@@ -633,16 +888,15 @@ def main() -> None:
         "screen_width": screen_size[0],
         "screen_height": screen_size[1],
         "models": list(args.models),
-        "sweeps": {
-            "parameters": {},
-            "data": {},
-            "epochs": {},
-        },
+        "sweep_order": list(args.sweeps),
+        "sweeps": {sweep_name: {} for sweep_name in args.sweeps},
     }
 
     for model_key in args.models:
         spec_groups = build_specs_for_model(args, model_key)
         for sweep_name, specs in spec_groups.items():
+            if sweep_name not in args.sweeps:
+                continue
             sweep_results = []
             print(f"[{model_key}] {sweep_name} sweep: {len(specs)} points")
             for index, spec in enumerate(specs, start=1):
@@ -660,14 +914,14 @@ def main() -> None:
                         device=device,
                     )
                 )
+                results["sweeps"][sweep_name][model_key] = sweep_results
+                (output_dir / "summary.json").write_text(json.dumps(results, indent=2))
             results["sweeps"][sweep_name][model_key] = sweep_results
 
     (output_dir / "summary.json").write_text(json.dumps(results, indent=2))
     write_summary_text(results, output_dir / "summary.txt")
-    plot_sweep(results, "parameters", output_dir / "params_vs_capture_mae.png")
-    plot_sweep(results, "data", output_dir / "data_vs_capture_mae.png")
-    plot_sweep(results, "epochs", output_dir / "epochs_vs_capture_mae.png")
-    plot_combined(results, output_dir / "combined_scaling.png")
+    write_points_csv(results, output_dir / "points.csv")
+    write_plots(results, output_dir)
     print(f"saved summary: {output_dir / 'summary.txt'}")
 
 

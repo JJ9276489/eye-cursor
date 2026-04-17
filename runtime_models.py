@@ -1,9 +1,17 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from collector import set_status_message
-from constants import VISION_ATTENTION_MATCHED_MODEL_PATH, VISION_CONCAT_MODEL_PATH
+from constants import (
+    VISION_ATTENTION_MATCHED_MODEL_PATH,
+    VISION_CONCAT_MODEL_PATH,
+    VISION_SPATIAL_GEOMETRY_MODEL_PATH,
+    VISION_SPATIAL_MODEL_PATH,
+)
 from mapper import PolynomialRidgeGazeMapper, load_latest_mapper
 from vision_runtime import VisionGazePredictor, load_vision_predictor
+
+VisionCheckpointSpec = tuple[str, str, Path]
 
 
 def format_metrics(metrics: dict[str, float] | None) -> str | None:
@@ -15,10 +23,12 @@ def format_metrics(metrics: dict[str, float] | None) -> str | None:
     )
 
 
-def vision_checkpoints() -> list[tuple[str, str, object]]:
+def vision_checkpoints() -> list[VisionCheckpointSpec]:
     return [
-        ("vision_attention_matched", "vision-attn", VISION_ATTENTION_MATCHED_MODEL_PATH),
+        ("vision_spatial_geom", "vision-spatial-geom", VISION_SPATIAL_GEOMETRY_MODEL_PATH),
+        ("vision_spatial", "vision-spatial", VISION_SPATIAL_MODEL_PATH),
         ("vision_concat", "vision-concat", VISION_CONCAT_MODEL_PATH),
+        ("vision_attention_matched", "vision-attn", VISION_ATTENTION_MATCHED_MODEL_PATH),
     ]
 
 
@@ -57,12 +67,20 @@ class RuntimeModels:
         return mode
 
     def active_details(self) -> tuple[str | None, dict[str, float] | None]:
-        predictor = self.vision_predictors.get(self.active_mode or "")
+        return self.mode_details(self.active_mode)
+
+    def mode_details(self, mode: str | None) -> tuple[str | None, dict[str, float] | None]:
+        if mode is None:
+            return None, None
+        predictor = self.vision_predictors.get(mode)
         if predictor is not None:
             return predictor.label, predictor.metrics
-        if self.active_mode == "ridge" and self.ridge_mapper is not None:
+        if mode == "ridge" and self.ridge_mapper is not None:
             return self.ridge_mapper.label, self.ridge_mapper.metrics
         return None, None
+
+    def has_vision_predictors(self) -> bool:
+        return bool(self.vision_predictors)
 
     def predict_normalized(
         self,
@@ -75,6 +93,22 @@ class RuntimeModels:
         if self.active_mode == "ridge" and self.ridge_mapper is not None:
             return self.ridge_mapper.predict_normalized(payload)
         return None
+
+    def predict_all_normalized(
+        self,
+        payload: dict[str, float],
+        eye_crops,
+    ) -> dict[str, tuple[float, float]]:
+        predictions: dict[str, tuple[float, float]] = {}
+        for mode in self.available_modes():
+            predictor = self.vision_predictors.get(mode)
+            if predictor is not None:
+                if eye_crops is not None:
+                    predictions[mode] = predictor.predict_normalized(eye_crops, payload)
+                continue
+            if mode == "ridge" and self.ridge_mapper is not None:
+                predictions[mode] = self.ridge_mapper.predict_normalized(payload)
+        return predictions
 
     def reload_ridge(self, collection) -> None:
         try:

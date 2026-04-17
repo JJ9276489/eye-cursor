@@ -17,6 +17,12 @@ VISION_CONCAT_MODEL_PATH = ROOT_DIR / "models" / "vision_gaze_latest.pt"
 VISION_CONCAT_METRICS_PATH = ROOT_DIR / "models" / "vision_gaze_latest.json"
 VISION_ATTENTION_MATCHED_MODEL_PATH = ROOT_DIR / "models" / "vision_gaze_attention_matched.pt"
 VISION_ATTENTION_MATCHED_METRICS_PATH = ROOT_DIR / "models" / "vision_gaze_attention_matched.json"
+VISION_SPATIAL_MODEL_PATH = ROOT_DIR / "models" / "vision_gaze_spatial.pt"
+VISION_SPATIAL_METRICS_PATH = ROOT_DIR / "models" / "vision_gaze_spatial.json"
+VISION_SPATIAL_GEOMETRY_MODEL_PATH = ROOT_DIR / "models" / "vision_gaze_spatial_geom.pt"
+VISION_SPATIAL_GEOMETRY_METRICS_PATH = ROOT_DIR / "models" / "vision_gaze_spatial_geom.json"
+VISION_VIT_MODEL_PATH = ROOT_DIR / "models" / "vision_gaze_vit.pt"
+VISION_VIT_METRICS_PATH = ROOT_DIR / "models" / "vision_gaze_vit.json"
 VISION_MODEL_PATH = VISION_CONCAT_MODEL_PATH
 VISION_METRICS_PATH = VISION_CONCAT_METRICS_PATH
 
@@ -48,6 +54,22 @@ VISION_HEAD_FEATURE_KEYS = [
     "head_tx",
     "head_ty",
     "head_tz",
+]
+VISION_EYE_GEOMETRY_FEATURE_KEYS = [
+    "left_x",
+    "left_y",
+    "left_orth_y",
+    "left_openness",
+    "left_upper_gap",
+    "left_lower_gap",
+    "right_x",
+    "right_y",
+    "right_orth_y",
+    "right_openness",
+    "right_upper_gap",
+    "right_lower_gap",
+    "avg_x",
+    "avg_y",
 ]
 
 FACE_OVAL = [

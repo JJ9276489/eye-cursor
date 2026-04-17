@@ -415,41 +415,92 @@ def close_gaze_preview_window() -> None:
         pass
 
 
+def preview_marker_color(index: int, active: bool) -> tuple[int, int, int]:
+    if active:
+        return (0, 255, 255)
+    palette = [
+        (80, 220, 80),
+        (255, 170, 80),
+        (220, 120, 255),
+        (255, 210, 80),
+        (120, 220, 255),
+    ]
+    return palette[index % len(palette)]
+
+
+def draw_preview_marker(
+    canvas: np.ndarray,
+    point: tuple[float, float],
+    color: tuple[int, int, int],
+    active: bool,
+) -> tuple[int, int]:
+    height, width = canvas.shape[:2]
+    point_x = int(clamp01(point[0]) * (width - 1))
+    point_y = int(clamp01(point[1]) * (height - 1))
+    radius = 24 if active else 16
+    cv2.circle(canvas, (point_x, point_y), radius, color, 2, cv2.LINE_AA)
+    cv2.circle(canvas, (point_x, point_y), 6 if active else 4, color, -1, cv2.LINE_AA)
+    cv2.line(
+        canvas,
+        (point_x - radius - 10, point_y),
+        (point_x + radius + 10, point_y),
+        color,
+        1,
+        cv2.LINE_AA,
+    )
+    cv2.line(
+        canvas,
+        (point_x, point_y - radius - 10),
+        (point_x, point_y + radius + 10),
+        color,
+        1,
+        cv2.LINE_AA,
+    )
+    return point_x, point_y
+
+
 def render_gaze_preview(
     screen_size: tuple[int, int],
     predicted_point: tuple[float, float] | None,
     model_label: str | None,
     active_mode: str | None,
+    model_predictions: list[tuple[str, str | None, tuple[float, float], bool]] | None = None,
 ) -> None:
     width, height = screen_size
     canvas = np.zeros((height, width, 3), dtype=np.uint8)
     label = model_label if model_label else "model unavailable"
     mode_text = active_mode if active_mode else "none"
+    predictions = model_predictions or []
 
-    if predicted_point is not None:
-        point_x = int(predicted_point[0] * (width - 1))
-        point_y = int(predicted_point[1] * (height - 1))
-        cv2.circle(canvas, (point_x, point_y), 22, (0, 255, 255), 2, cv2.LINE_AA)
-        cv2.circle(canvas, (point_x, point_y), 6, (0, 255, 255), -1, cv2.LINE_AA)
-        cv2.line(
-            canvas,
-            (point_x - 32, point_y),
-            (point_x + 32, point_y),
-            (0, 255, 255),
-            1,
-            cv2.LINE_AA,
-        )
-        cv2.line(
-            canvas,
-            (point_x, point_y - 32),
-            (point_x, point_y + 32),
-            (0, 255, 255),
-            1,
-            cv2.LINE_AA,
-        )
+    active_point = predicted_point
+    if predictions:
+        for index, (mode_name, item_label, point, active) in enumerate(predictions):
+            color = preview_marker_color(index, active)
+            point_x, point_y = draw_preview_marker(canvas, point, color, active)
+            if active:
+                active_point = point
+            if active or index < 5:
+                text_y = max(24, point_y - 18)
+                short_name = mode_name if len(mode_name) <= 22 else mode_name[:19] + "..."
+                cv2.putText(
+                    canvas,
+                    short_name,
+                    (min(point_x + 20, width - 260), text_y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    color,
+                    2 if active else 1,
+                    cv2.LINE_AA,
+                )
+    elif predicted_point is not None:
+        draw_preview_marker(canvas, predicted_point, (0, 255, 255), True)
+
+    if active_point is not None:
+        point_x = int(clamp01(active_point[0]) * (width - 1))
+        point_y = int(clamp01(active_point[1]) * (height - 1))
         cv2.putText(
             canvas,
-            f"predicted gaze {point_x}, {point_y}",
+            f"active gaze {point_x}, {point_y}",
             (60, 140),
             cv2.FONT_HERSHEY_SIMPLEX,
             1.0,
@@ -468,6 +519,37 @@ def render_gaze_preview(
             2,
             cv2.LINE_AA,
         )
+
+    legend_y = 185
+    if predictions:
+        cv2.putText(
+            canvas,
+            "Loaded models",
+            (60, legend_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.72,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        for index, (mode_name, item_label, point, active) in enumerate(predictions[:8]):
+            color = preview_marker_color(index, active)
+            y = legend_y + 36 + index * 30
+            cv2.circle(canvas, (72, y - 5), 7, color, -1, cv2.LINE_AA)
+            display_label = item_label or mode_name
+            if len(display_label) > 34:
+                display_label = display_label[:31] + "..."
+            suffix = " active" if active else ""
+            cv2.putText(
+                canvas,
+                f"{mode_name}: {display_label}{suffix}",
+                (92, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.58,
+                color if active else (210, 210, 210),
+                2 if active else 1,
+                cv2.LINE_AA,
+            )
 
     cv2.putText(
         canvas,

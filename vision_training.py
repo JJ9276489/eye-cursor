@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from vision_dataset import EyeCropDataset
+from vision_dataset import EyeCropDataset, compute_payload_feature_normalization
 from vision_model import EyeCropModelConfig, EyeCropRegressor
 
 
@@ -31,12 +31,18 @@ def build_loader(
     batch_size: int,
     shuffle: bool,
     augment: bool = False,
+    extra_feature_keys: tuple[str, ...] = (),
+    extra_mean: np.ndarray | None = None,
+    extra_scale: np.ndarray | None = None,
 ) -> DataLoader:
     dataset = EyeCropDataset(
         samples,
         head_mean=head_mean,
         head_scale=head_scale,
         augment=augment,
+        extra_feature_keys=extra_feature_keys,
+        extra_mean=extra_mean,
+        extra_scale=extra_scale,
     )
     return DataLoader(
         dataset,
@@ -78,9 +84,10 @@ def run_epoch(
             left_eye = batch["left_eye"].to(device)
             right_eye = batch["right_eye"].to(device)
             head_features = batch["head_features"].to(device)
+            extra_features = batch["extra_features"].to(device)
             targets = batch["target"].to(device)
 
-            predictions = model(left_eye, right_eye, head_features)
+            predictions = model(left_eye, right_eye, head_features, extra_features)
             loss = nn.functional.smooth_l1_loss(predictions, targets)
 
             if training:
@@ -112,6 +119,9 @@ class FrameTrainingResult:
     eval_metrics: dict[str, float] | None
     best_epoch: int | None
     epochs_trained: int
+    extra_feature_keys: tuple[str, ...]
+    extra_mean: np.ndarray
+    extra_scale: np.ndarray
 
 
 def train_frame_model(
@@ -132,6 +142,12 @@ def train_frame_model(
     early_stopping_min_delta: float = 0.0,
     verbose: bool = True,
 ) -> FrameTrainingResult:
+    model_config = model_config or EyeCropModelConfig()
+    extra_feature_keys = tuple(model_config.extra_feature_keys)
+    extra_mean, extra_scale = compute_payload_feature_normalization(
+        train_samples,
+        extra_feature_keys,
+    )
     train_loader = build_loader(
         train_samples,
         head_mean=head_mean,
@@ -139,6 +155,9 @@ def train_frame_model(
         batch_size=batch_size,
         shuffle=True,
         augment=augment_train,
+        extra_feature_keys=extra_feature_keys,
+        extra_mean=extra_mean,
+        extra_scale=extra_scale,
     )
     eval_loader = (
         build_loader(
@@ -148,6 +167,9 @@ def train_frame_model(
             batch_size=batch_size,
             shuffle=False,
             augment=False,
+            extra_feature_keys=extra_feature_keys,
+            extra_mean=extra_mean,
+            extra_scale=extra_scale,
         )
         if eval_samples
         else None
@@ -155,6 +177,7 @@ def train_frame_model(
 
     model = EyeCropRegressor(
         head_feature_dim=len(head_mean),
+        extra_feature_dim=len(extra_feature_keys),
         config=model_config,
     ).to(device)
     optimizer = torch.optim.AdamW(
@@ -247,4 +270,7 @@ def train_frame_model(
         eval_metrics=last_eval_metrics,
         best_epoch=best_epoch,
         epochs_trained=epochs_trained,
+        extra_feature_keys=extra_feature_keys,
+        extra_mean=extra_mean,
+        extra_scale=extra_scale,
     )

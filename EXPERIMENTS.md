@@ -4,6 +4,20 @@ This file records model lines that were tested and whether they are still worth 
 
 ## Active
 
+### `spatial_geom`
+- type: spatial eye-crop CNN + head/face features + engineered eye-geometry scalars
+- status: active candidate
+- reason: best completed label-holdout architecture result so far
+- best known completed result:
+  - `label_holdout`: `86.9px`
+
+### `spatial`
+- type: spatial eye-crop CNN + head/face features
+- status: active candidate
+- reason: isolates the benefit of preserving eye-crop spatial layout
+- best known completed result:
+  - `label_holdout`: `92.7px`
+
 ### `ridge`
 - type: polynomial ridge over engineered eye/head features
 - status: keep
@@ -60,6 +74,20 @@ This file records model lines that were tested and whether they are still worth 
 
 ## Notes
 
+- Scaling reports are now consolidated under `reports/scaling/`.
+  - canonical command: `.venv/bin/python -u scaling_experiments.py --device mps --output-dir reports/scaling/latest`
+  - the old `scaling_studies.py` and `reports/scaling_studies/` path was removed to avoid duplicate experiment systems
+- Current architecture candidates in the canonical scaler:
+  - `concat`: current average-pooled CNN + head features baseline
+  - `spatial`: CNN that preserves the final eye-crop spatial grid instead of global average pooling
+  - `spatial_geom`: spatial CNN plus engineered eye-geometry scalars
+  - `vit`: tiny patch transformer over eye crops
+  - `attn`: current attention-fusion baseline
+- Latest completed architecture scaling run (`label_holdout`):
+  - `spatial_geom`: `86.9px`
+  - `spatial`: `92.7px`
+  - `concat`: `120.0-120.6px`
+  - implication: spatial layout preservation is a major label-holdout win; strict `session_holdout` is still required before making it the default
 - Earlier full strict comparisons established the current frame tradeoff:
   - `session_holdout`: `frame_attention_matched_long` `191.3px`, `frame_wide_aug_long` `215.1px`, `ridge` `271.4px`
   - `region_holdout`: `frame_wide_aug_long` `97.5px`, `frame_attention_matched_long` `123.6px`, `ridge` `148.0px`
@@ -71,3 +99,8 @@ This file records model lines that were tested and whether they are still worth 
   - refreshed `concat` checkpoint trainer eval: `82.6px x / 71.2px y`
   - `session_holdout` `quick`: `frame_attention_matched_long` `220.0px`, `frame_wide_aug_long` `224.2px`, `ridge` `239.1px`
   - implication: `concat` remains the cleaner main line for easy/region behavior, but `attention` is still live on cross-session robustness and has not been ruled out
+- Latest retrain on the `22`-session dataset (`8803` train / `2215` eval):
+  - refreshed `concat` checkpoint trainer eval: `85.1px x / 77.9px y`
+  - refreshed `attention` checkpoint trainer eval: `97.1px x / 88.9px y`
+  - `label_holdout` `quick`: `frame_wide_aug_long` `131.1px`, `ridge` `144.7px`, `frame_attention_matched_long` `156.7px`
+  - implication: `concat` is still the main practical model line; the larger dataset did not improve the easy split, so the next important check is cross-session behavior rather than more quick-label tuning

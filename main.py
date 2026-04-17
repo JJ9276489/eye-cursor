@@ -79,6 +79,8 @@ def run() -> None:
     last_result = None
     last_timestamp_ms = 0
     smoothed_prediction: tuple[float, float] | None = None
+    smoothed_model_predictions: dict[str, tuple[float, float]] = {}
+    preview_model_predictions: list[tuple[str, str | None, tuple[float, float], bool]] = []
 
     try:
         with create_landmarker(model_path) as landmarker:
@@ -105,6 +107,10 @@ def run() -> None:
                     if collection.recording or (
                         runtime_models.active_mode is not None
                         and runtime_models.active_mode.startswith("vision")
+                    ) or (
+                        preview_enabled
+                        and not collection.recording
+                        and runtime_models.has_vision_predictors()
                     ):
                         eye_crops = extract_eye_crops(last_frame, feature_frame.face_landmarks)
 
@@ -116,6 +122,37 @@ def run() -> None:
                         smoothed_prediction,
                         raw_prediction,
                     )
+
+                    if preview_enabled and not collection.recording:
+                        raw_model_predictions = runtime_models.predict_all_normalized(
+                            feature_frame.payload,
+                            eye_crops,
+                        )
+                        smoothed_model_predictions = {
+                            mode: smooth_prediction(
+                                smoothed_model_predictions.get(mode),
+                                point,
+                            )
+                            for mode, point in raw_model_predictions.items()
+                        }
+                        preview_model_predictions = []
+                        for mode in runtime_models.available_modes():
+                            point = smoothed_model_predictions.get(mode)
+                            if point is None:
+                                continue
+                            mode_label = runtime_models.mode_display_name(mode) or mode
+                            checkpoint_label, _ = runtime_models.mode_details(mode)
+                            preview_model_predictions.append(
+                                (
+                                    mode_label,
+                                    checkpoint_label,
+                                    point,
+                                    mode == runtime_models.active_mode,
+                                )
+                            )
+                    else:
+                        smoothed_model_predictions.clear()
+                        preview_model_predictions = []
 
                     facial_matrix = (
                         last_result.facial_transformation_matrixes[0]
@@ -157,6 +194,8 @@ def run() -> None:
                     draw_status(frame, "Tracking face and irises")
                 else:
                     smoothed_prediction = None
+                    smoothed_model_predictions.clear()
+                    preview_model_predictions = []
                     draw_status(frame, "No face detected")
 
                 if update_recording(collection) is not None:
@@ -171,6 +210,7 @@ def run() -> None:
                         smoothed_prediction,
                         active_label,
                         runtime_models.active_mode,
+                        preview_model_predictions,
                     )
 
                 if collection.status_message:
@@ -194,19 +234,27 @@ def run() -> None:
                 if events.begin_recording:
                     if start_recording(collection, screen_size):
                         preview_enabled = False
+                        smoothed_model_predictions.clear()
+                        preview_model_predictions = []
                         close_gaze_preview_window()
                 if debug_key == ord(" ") and not events.begin_recording:
                     if start_recording(collection, screen_size):
                         preview_enabled = False
+                        smoothed_model_predictions.clear()
+                        preview_model_predictions = []
                         close_gaze_preview_window()
                 if events.toggle_preview and not collection.recording:
                     preview_enabled = not preview_enabled
+                    smoothed_model_predictions.clear()
+                    preview_model_predictions = []
                     if preview_enabled:
                         open_gaze_preview_window()
                     else:
                         close_gaze_preview_window()
                 if debug_key == ord("g") and not collection.recording and not events.toggle_preview:
                     preview_enabled = not preview_enabled
+                    smoothed_model_predictions.clear()
+                    preview_model_predictions = []
                     if preview_enabled:
                         open_gaze_preview_window()
                     else:
@@ -215,6 +263,8 @@ def run() -> None:
                     next_mode = runtime_models.cycle_active_mode(collection)
                     if next_mode is not None:
                         smoothed_prediction = None
+                        smoothed_model_predictions.clear()
+                        preview_model_predictions = []
                 if events.toggle_collection or debug_key == ord("m"):
                     collection_window.toggle_visibility()
                     set_status_message(

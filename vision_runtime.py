@@ -38,6 +38,9 @@ class VisionGazePredictor:
     head_feature_keys: list[str]
     head_mean: np.ndarray
     head_scale: np.ndarray
+    extra_feature_keys: list[str]
+    extra_mean: np.ndarray
+    extra_scale: np.ndarray
     model: EyeCropRegressor
     device: torch.device
     train_sample_count: int
@@ -72,9 +75,18 @@ class VisionGazePredictor:
         left_eye = preprocess_eye_crop(eye_crops["left"]).to(self.device)
         right_eye = preprocess_eye_crop(eye_crops["right"]).to(self.device)
         head_tensor = torch.from_numpy(head_features).unsqueeze(0).to(self.device)
+        if self.extra_feature_keys:
+            extra_features = np.array(
+                [float(payload.get(key, 0.0)) for key in self.extra_feature_keys],
+                dtype=np.float32,
+            )
+            extra_features = (extra_features - self.extra_mean) / self.extra_scale
+            extra_tensor = torch.from_numpy(extra_features).unsqueeze(0).to(self.device)
+        else:
+            extra_tensor = None
 
         with torch.no_grad():
-            prediction = self.model(left_eye, right_eye, head_tensor)
+            prediction = self.model(left_eye, right_eye, head_tensor, extra_tensor)
         normalized = prediction.squeeze(0).detach().cpu().numpy()
         return (
             clamp01(float(normalized[0])),
@@ -100,8 +112,10 @@ def load_vision_predictor(
         raise ValueError("Vision checkpoint is missing auxiliary feature keys")
 
     model_config = EyeCropModelConfig.from_dict(checkpoint.get("model_config"))
+    extra_feature_keys = list(checkpoint.get("extra_feature_keys") or model_config.extra_feature_keys)
     model = EyeCropRegressor(
         head_feature_dim=len(head_feature_keys),
+        extra_feature_dim=len(extra_feature_keys),
         config=model_config,
     )
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -113,6 +127,15 @@ def load_vision_predictor(
     head_mean = np.array(checkpoint["head_mean"], dtype=np.float32)
     head_scale = np.array(checkpoint["head_scale"], dtype=np.float32)
     head_scale[head_scale < 1e-6] = 1.0
+    extra_mean = np.array(
+        checkpoint.get("extra_mean") or [0.0] * len(extra_feature_keys),
+        dtype=np.float32,
+    )
+    extra_scale = np.array(
+        checkpoint.get("extra_scale") or [1.0] * len(extra_feature_keys),
+        dtype=np.float32,
+    )
+    extra_scale[extra_scale < 1e-6] = 1.0
 
     return VisionGazePredictor(
         checkpoint_path=checkpoint_path,
@@ -120,6 +143,9 @@ def load_vision_predictor(
         head_feature_keys=head_feature_keys,
         head_mean=head_mean,
         head_scale=head_scale,
+        extra_feature_keys=extra_feature_keys,
+        extra_mean=extra_mean,
+        extra_scale=extra_scale,
         model=model,
         device=device,
         train_sample_count=int(checkpoint.get("train_sample_count", 0)),

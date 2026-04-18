@@ -176,8 +176,9 @@ class RuntimeModels:
         set_status_message(collection, message, duration=1.5)
 
     def cycle_active_mode(self, collection) -> str | None:
-        if not self.vision_predictors:
-            self.reload_vision(collection)
+        # Reload on explicit model cycling so newly trained checkpoints appear
+        # in the preview without requiring an app restart.
+        self.reload_vision(collection)
 
         modes = self.available_modes()
         if not modes:

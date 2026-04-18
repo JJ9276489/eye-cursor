@@ -1,0 +1,6 @@
+matplotlib==3.10.8
+mediapipe==0.10.33
+numpy==2.4.4
+opencv-contrib-python==4.13.0.92
+pygame==2.6.1
+torch==2.11.0

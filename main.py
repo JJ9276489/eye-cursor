@@ -1,3 +1,4 @@
+import argparse
 from collections import deque
 import time
 
@@ -62,11 +63,14 @@ def start_recording(collection, screen_size: tuple[int, int]) -> bool:
     return True
 
 
-def run() -> None:
+def run(start_preview: bool = False, collection_visible: bool = True) -> None:
     model_path = ensure_model()
     cap = open_camera()
     collection_window = CollectionWindow()
     screen_size = collection_window.screen_size
+    if not collection_visible:
+        collection_window.toggle_visibility()
+
     history: deque[tuple[float, float]] = deque(maxlen=90)
     collection = create_collection_state(screen_size=screen_size)
     runtime_models = RuntimeModels(screen_size=screen_size)
@@ -74,13 +78,15 @@ def run() -> None:
     if runtime_models.active_mode and runtime_models.active_mode.startswith("vision"):
         runtime_models.announce_active_mode(collection, include_compare_hint=True)
 
-    preview_enabled = False
+    preview_enabled = start_preview
     last_frame = None
     last_result = None
     last_timestamp_ms = 0
     smoothed_prediction: tuple[float, float] | None = None
     smoothed_model_predictions: dict[str, tuple[float, float]] = {}
     preview_model_predictions: list[tuple[str, str | None, tuple[float, float], bool]] = []
+    if preview_enabled:
+        open_gaze_preview_window()
 
     try:
         with create_landmarker(model_path) as landmarker:
@@ -280,5 +286,21 @@ def run() -> None:
         cv2.destroyAllWindows()
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the webcam gaze cursor prototype.")
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Start with the fullscreen gaze preview enabled.",
+    )
+    parser.add_argument(
+        "--hide-collection",
+        action="store_true",
+        help="Start with the fullscreen collection target hidden.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    run()
+    args = parse_args()
+    run(start_preview=args.preview, collection_visible=not args.hide_collection)

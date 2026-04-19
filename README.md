@@ -39,11 +39,11 @@ Useful keys:
 - `c`: clear the signal history plot.
 - `q` or `Esc`: quit.
 
-## Review Packet
+## Documentation
 
-For expert review, start here:
-- [docs/review_guide.md](docs/review_guide.md): canonical paths, historical/support scripts, and reproducibility boundary.
-- [docs/results.md](docs/results.md): public snapshot of the latest local results and caveats.
+Project docs:
+- [docs/overview.md](docs/overview.md): entrypoints, code layout, local checks, and artifact policy.
+- [docs/results.md](docs/results.md): latest local results snapshot and caveats.
 - [EXPERIMENTS.md](EXPERIMENTS.md): historical model notes.
 
 Run the no-webcam smoke test:
@@ -149,7 +149,9 @@ Outputs:
 
 Scaling runs cache fold/point results under `.cache/scaling`, so interrupted runs can resume without retraining completed points.
 
-## File Map
+## Project Layout
+
+The concise project layout is in [docs/overview.md](docs/overview.md).
 
 Live app:
 - [main.py](main.py): webcam loop, collection, prediction, preview routing.
@@ -187,3 +189,7 @@ Near-term priority:
 - vary lighting and posture
 - cover the full screen
 - avoid over-collecting many nearly identical captures in one sitting
+
+## License
+
+MIT. See [LICENSE](LICENSE).

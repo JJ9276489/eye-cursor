@@ -4,7 +4,7 @@ This file records model lines that were tested and whether they are still worth 
 
 Current canonical result snapshot: [docs/results.md](docs/results.md).
 
-Current code-review map: [docs/review_guide.md](docs/review_guide.md).
+Project overview: [docs/overview.md](docs/overview.md).
 
 As of `2026-04-19`, the practical main line is `spatial_geom 0.5x`: spatial eye-crop CNN plus head/face features plus engineered eye-geometry scalars. Older `frame_*` names are retained as historical benchmark labels.
 

@@ -80,7 +80,7 @@ python train_vision_model.py --model spatial_geom --param-multiplier 0.5 --epoch
 ## Caveats
 
 - These are single-machine, local-user results, not a public benchmark.
-- Raw data and checkpoints are not committed, so outside reviewers cannot exactly reproduce the numbers from this repo alone.
+- Raw data and checkpoints are not committed, so the numbers cannot be exactly reproduced from this repo alone.
 - `label_holdout` can overstate practical quality because train and eval captures may be from similar sessions.
 - `session_holdout` is stricter, but fold sizes are imbalanced because sessions have different amounts of captured data.
 - This project does not currently claim SOTA webcam gaze tracking. The current goal is a usable personalized webcam-only cursor prototype.

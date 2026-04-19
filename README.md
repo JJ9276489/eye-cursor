@@ -39,6 +39,19 @@ Useful keys:
 - `c`: clear the signal history plot.
 - `q` or `Esc`: quit.
 
+## Review Packet
+
+For expert review, start here:
+- [docs/review_guide.md](docs/review_guide.md): canonical paths, historical/support scripts, and reproducibility boundary.
+- [docs/results.md](docs/results.md): public snapshot of the latest local results and caveats.
+- [EXPERIMENTS.md](EXPERIMENTS.md): historical model notes.
+
+Run the no-webcam smoke test:
+
+```bash
+python smoke_test.py
+```
+
 ## Collect And Train
 
 Run the full collection app:
@@ -104,6 +117,8 @@ Important caveat:
 
 Historical model notes live in [EXPERIMENTS.md](EXPERIMENTS.md).
 
+The current public result snapshot lives in [docs/results.md](docs/results.md).
+
 ## Evaluation
 
 Run canonical scaling sweeps:
@@ -158,6 +173,12 @@ Models and training:
 - [vision_training.py](vision_training.py): shared frame-model training loop.
 - [train_vision_model.py](train_vision_model.py): trains one live checkpoint.
 - [scaling_experiments.py](scaling_experiments.py): canonical architecture/data/epoch/parameter sweeps.
+- [smoke_test.py](smoke_test.py): no-webcam import, compile, and model-forward smoke test.
+
+Historical/support scripts:
+- [benchmark_models.py](benchmark_models.py): older benchmark runner for ridge, wide-concat, and matched-attention lines.
+- [eval_report.py](eval_report.py): ridge-only evaluation/report generator.
+- [vision_eval_report.py](vision_eval_report.py): older frame-model evaluation CLI; fold helpers are still reused by the canonical scaler.
 
 ## Data Direction
 

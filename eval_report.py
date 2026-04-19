@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""Ridge-only evaluation/report generator.
+
+The neural-model scaling path now lives in `scaling_experiments.py`, but this
+module remains useful for the polynomial ridge baseline and its diagnostics.
+"""
+
 import argparse
 from collections import defaultdict
 from dataclasses import dataclass

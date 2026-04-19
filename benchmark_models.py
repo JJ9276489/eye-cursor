@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""Historical benchmark runner for older model lines.
+
+The current canonical architecture/scaling runner is `scaling_experiments.py`.
+This module is retained to reproduce comparisons for `ridge`,
+`frame_wide_aug_long`, and `frame_attention_matched_long`.
+"""
+
 import argparse
 from dataclasses import dataclass
 import hashlib

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""Frame-vision evaluation utilities and legacy CLI.
+
+`scaling_experiments.py` is the canonical model-scaling entrypoint. This module
+still owns reusable holdout fold construction helpers used by that runner.
+"""
+
 import argparse
 from dataclasses import dataclass
 import json

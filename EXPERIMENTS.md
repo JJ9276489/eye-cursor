@@ -2,14 +2,21 @@
 
 This file records model lines that were tested and whether they are still worth carrying in the codebase.
 
+Current canonical result snapshot: [docs/results.md](docs/results.md).
+
+Current code-review map: [docs/review_guide.md](docs/review_guide.md).
+
+As of `2026-04-19`, the practical main line is `spatial_geom 0.5x`: spatial eye-crop CNN plus head/face features plus engineered eye-geometry scalars. Older `frame_*` names are retained as historical benchmark labels.
+
 ## Active
 
 ### `spatial_geom`
 - type: spatial eye-crop CNN + head/face features + engineered eye-geometry scalars
-- status: active candidate
-- reason: best completed label-holdout architecture result so far
+- status: current main line
+- reason: best completed label-holdout result and best focused strict session-holdout result for the newer architecture family
 - best known completed result:
   - `label_holdout`: `86.9px`
+  - `session_holdout`: `134.9px`
 
 ### `spatial`
 - type: spatial eye-crop CNN + head/face features
@@ -25,15 +32,15 @@ This file records model lines that were tested and whether they are still worth 
 
 ### `frame_wide_aug_long`
 - type: wide eye-crop CNN + head/face features + concat fusion
-- status: keep
-- reason: best known region generalization
+- status: historical benchmark
+- reason: useful comparison point, but no longer the main architecture line
 - best known strict result:
   - `region_holdout`: `97.5px`
 
 ### `frame_attention_matched_long`
 - type: parameter-matched eye-crop CNN + head/face features + token attention fusion
-- status: keep
-- reason: best known session generalization
+- status: historical benchmark
+- reason: useful comparison point for attention fusion, but not the current main architecture line
 - best known strict result:
   - `session_holdout`: `191.3px`
 
@@ -87,7 +94,10 @@ This file records model lines that were tested and whether they are still worth 
   - `spatial_geom`: `86.9px`
   - `spatial`: `92.7px`
   - `concat`: `120.0-120.6px`
-  - implication: spatial layout preservation is a major label-holdout win; strict `session_holdout` is still required before making it the default
+  - implication: spatial layout preservation is a major label-holdout win
+- Focused strict spatial-geometry check:
+  - `session_holdout`: `spatial_geom 0.5x` `134.9px`
+  - implication: `spatial_geom 0.5x` is the current live/default model line
 - Earlier full strict comparisons established the current frame tradeoff:
   - `session_holdout`: `frame_attention_matched_long` `191.3px`, `frame_wide_aug_long` `215.1px`, `ridge` `271.4px`
   - `region_holdout`: `frame_wide_aug_long` `97.5px`, `frame_attention_matched_long` `123.6px`, `ridge` `148.0px`
@@ -103,4 +113,4 @@ This file records model lines that were tested and whether they are still worth 
   - refreshed `concat` checkpoint trainer eval: `85.1px x / 77.9px y`
   - refreshed `attention` checkpoint trainer eval: `97.1px x / 88.9px y`
   - `label_holdout` `quick`: `frame_wide_aug_long` `131.1px`, `ridge` `144.7px`, `frame_attention_matched_long` `156.7px`
-  - implication: `concat` is still the main practical model line; the larger dataset did not improve the easy split, so the next important check is cross-session behavior rather than more quick-label tuning
+  - implication at that time: `concat` was still the practical line before the later `spatial`/`spatial_geom` scaling work superseded it

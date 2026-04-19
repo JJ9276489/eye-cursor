@@ -148,6 +148,24 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Ignore cached point results and recompute them.",
     )
+    parser.add_argument(
+        "--early-stopping-patience",
+        type=int,
+        default=None,
+        help="Stop a fold after this many epochs without eval-loss improvement.",
+    )
+    parser.add_argument(
+        "--early-stopping-min-epochs",
+        type=int,
+        default=0,
+        help="Minimum epochs to train before early stopping can trigger.",
+    )
+    parser.add_argument(
+        "--early-stopping-min-delta",
+        type=float,
+        default=0.0,
+        help="Minimum eval-loss improvement needed to reset early stopping.",
+    )
     return parser.parse_args()
 
 
@@ -413,6 +431,9 @@ def point_cache_key(
             "learning_rate": spec.learning_rate,
             "weight_decay": spec.weight_decay,
             "augment_train": spec.augment_train,
+            "early_stopping_patience": args.early_stopping_patience,
+            "early_stopping_min_epochs": args.early_stopping_min_epochs,
+            "early_stopping_min_delta": args.early_stopping_min_delta,
             "metadata": spec.metadata,
         },
         "train_capture_ids": train_capture_ids,
@@ -437,6 +458,7 @@ def save_cached_point(key: str, result: dict) -> None:
 
 
 def evaluate_spec_on_fold(
+    args: argparse.Namespace,
     spec: SweepSpec,
     train_captures: list[VisionCapture],
     eval_captures: list[VisionCapture],
@@ -461,7 +483,9 @@ def evaluate_spec_on_fold(
         device=device,
         model_config=spec.model_config,
         augment_train=spec.augment_train,
-        early_stopping_patience=None,
+        early_stopping_patience=args.early_stopping_patience,
+        early_stopping_min_epochs=args.early_stopping_min_epochs,
+        early_stopping_min_delta=args.early_stopping_min_delta,
         verbose=False,
     )
     metrics = capture_metric_summary(
@@ -494,6 +518,7 @@ def evaluate_sweep_point(
 ) -> dict:
     folds = build_folds(args.mode, captures)
     fold_results = []
+    total_folds = len(folds)
     for fold_index, fold in enumerate(folds):
         train_captures = fold.train_captures
         if sweep_name == "data":
@@ -512,11 +537,21 @@ def evaluate_sweep_point(
         )
         cached = None if args.refresh else load_cached_point(cache_key)
         if cached is not None:
+            print(
+                f"    fold {fold_index + 1}/{total_folds} {fold.holdout_group}: cached",
+                flush=True,
+            )
             fold_results.append(cached)
             continue
 
+        print(
+            f"    fold {fold_index + 1}/{total_folds} {fold.holdout_group}: "
+            f"train {len(train_captures)} caps / eval {len(fold.eval_captures)} caps",
+            flush=True,
+        )
         seed_everything(args.seed + fold_index)
         result = evaluate_spec_on_fold(
+            args=args,
             spec=spec,
             train_captures=train_captures,
             eval_captures=fold.eval_captures,
@@ -526,6 +561,12 @@ def evaluate_sweep_point(
         )
         result["holdout_group"] = fold.holdout_group
         save_cached_point(cache_key, result)
+        print(
+            f"    fold {fold_index + 1}/{total_folds} {fold.holdout_group}: "
+            f"{result['capture_mae_distance_px']:.1f}px capture MAE "
+            f"(best epoch {result['best_epoch']})",
+            flush=True,
+        )
         fold_results.append(result)
 
     return {

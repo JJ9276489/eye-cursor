@@ -17,6 +17,7 @@ As of `2026-04-19`, the practical main line is `spatial_geom 0.5x`: spatial eye-
 - best known completed result:
   - `label_holdout`: `86.9px`
   - `session_holdout`: `134.9px`
+  - `region_holdout`: `163.9px`
 
 ### `spatial`
 - type: spatial eye-crop CNN + head/face features
@@ -24,6 +25,7 @@ As of `2026-04-19`, the practical main line is `spatial_geom 0.5x`: spatial eye-
 - reason: isolates the benefit of preserving eye-crop spatial layout
 - best known completed result:
   - `label_holdout`: `92.7px`
+  - `region_holdout`: `161.0px`
 
 ### `ridge`
 - type: polynomial ridge over engineered eye/head features
@@ -98,6 +100,11 @@ As of `2026-04-19`, the practical main line is `spatial_geom 0.5x`: spatial eye-
 - Focused strict spatial-geometry check:
   - `session_holdout`: `spatial_geom 0.5x` `134.9px`
   - implication: `spatial_geom 0.5x` is the current live/default model line
+- Current finalist `region_holdout` gate:
+  - `spatial 0.5x`: `161.0px`
+  - `spatial_geom 0.5x`: `163.9px`
+  - `concat 1.5x`: `207.1px`
+  - implication: region holdout is worth keeping; spatial layout preservation transfers, while the extra geometry scalars are not a clear region-holdout win overall
 - Earlier full strict comparisons established the current frame tradeoff:
   - `session_holdout`: `frame_attention_matched_long` `191.3px`, `frame_wide_aug_long` `215.1px`, `ridge` `271.4px`
   - `region_holdout`: `frame_wide_aug_long` `97.5px`, `frame_attention_matched_long` `123.6px`, `ridge` `148.0px`

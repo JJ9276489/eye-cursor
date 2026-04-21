@@ -1,5 +1,7 @@
 # Eye Cursor
 
+[![Smoke](https://github.com/JJ9276489/eye-cursor/actions/workflows/smoke.yml/badge.svg)](https://github.com/JJ9276489/eye-cursor/actions/workflows/smoke.yml)
+
 Webcam gaze-cursor research prototype using MediaPipe face tracking, aligned eye crops, and small personalized gaze models.
 
 The current direction is personalized webcam-only gaze estimation: collect screen-targeted samples, train a local model, then preview the predicted gaze point in real time.
@@ -51,6 +53,8 @@ Run the no-webcam smoke test:
 ```bash
 python smoke_test.py
 ```
+
+CI runs a lightweight Python compile check on pushes and pull requests. The local smoke test is deeper because it instantiates the model families and requires the project dependencies.
 
 ## Collect And Train
 

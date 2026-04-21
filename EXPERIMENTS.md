@@ -8,6 +8,8 @@ Project overview: [docs/overview.md](docs/overview.md).
 
 As of `2026-04-19`, the practical main line is `spatial_geom 0.5x`: spatial eye-crop CNN plus head/face features plus engineered eye-geometry scalars. Older `frame_*` names are retained as historical benchmark labels.
 
+Historical entries below are notes from earlier report paths and dataset snapshots. Use [docs/results.md](docs/results.md) for the current compact result summary.
+
 ## Active
 
 ### `spatial_geom`

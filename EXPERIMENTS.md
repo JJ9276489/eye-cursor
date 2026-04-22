@@ -120,6 +120,11 @@ Historical entries below are notes from earlier report paths and dataset snapsho
   - `spatial_geom 0.5x` natural label-holdout mean across 3 seeds: `89.2px`
   - `spatial_geom 0.5x` region-balanced label-holdout mean across 3 seeds: `88.1px`
   - implication: region-balanced sampling is not clearly worth making the default; the effect is smaller than seed variance
+- Prediction calibration diagnostic:
+  - docs: [docs/prediction_calibration.md](docs/prediction_calibration.md)
+  - raw eval capture MAE: `94.9px`
+  - best global calibration eval capture MAE: `93.5px`
+  - implication: edge predictions have inward bias, but a simple global output warp is not the main fix
 - Earlier full strict comparisons established the current frame tradeoff:
   - `session_holdout`: `frame_attention_matched_long` `191.3px`, `frame_wide_aug_long` `215.1px`, `ridge` `271.4px`
   - `region_holdout`: `frame_wide_aug_long` `97.5px`, `frame_attention_matched_long` `123.6px`, `ridge` `148.0px`

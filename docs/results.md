@@ -2,7 +2,7 @@
 
 This is a public, non-private summary of the local experiments. The raw data, trained checkpoints, and full generated reports are intentionally not committed because they are user-specific and screen-specific.
 
-Documented: `2026-04-19`; updated with the data-distribution diagnostic on `2026-04-21`.
+Documented: `2026-04-19`; updated with the data-distribution and prediction-calibration diagnostics on `2026-04-21`.
 
 Source reports generated from the local working tree on `2026-04-19`.
 
@@ -132,6 +132,23 @@ A 3-seed label-holdout ablation tested the hypothesis that uneven screen-region 
 | `region_balanced` | `88.1px` | `4.0px` |
 
 Interpretation: region balancing produced only a `1.1px` mean gain, smaller than seed-to-seed variance. Do not make balanced training the default yet; keep collecting session-diverse data with broad screen coverage.
+
+## Prediction Calibration Check
+
+Latest diagnostic: [prediction_calibration.md](prediction_calibration.md).
+
+This tested whether edge failures are mostly caused by the sigmoid-bounded NN output compressing predictions toward the center. Raw predictions do show inward edge bias:
+
+| Edge group | Inward bias |
+| --- | ---: |
+| left x | `+37.1px` |
+| right x | `+40.7px` |
+| top y | `+36.3px` |
+| bottom y | `+32.9px` |
+
+However, simple global calibration did not solve it. The best train-fit calibrator improved eval capture MAE by only `1.4px`, and repeated eval calibration/test splits were worse than leaving predictions raw.
+
+Interpretation: do not wire in a global exponential/logit edge-expansion curve as the default. The edge issue is probably not just output scaling; it likely depends on signal ambiguity, head pose, eye geometry, and corner-specific behavior.
 
 ## Live Checkpoint
 

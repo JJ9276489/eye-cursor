@@ -47,6 +47,7 @@ Project docs:
 - [docs/overview.md](docs/overview.md): entrypoints, code layout, local checks, and artifact policy.
 - [docs/results.md](docs/results.md): latest local results snapshot and caveats.
 - [docs/data_distribution.md](docs/data_distribution.md): screen-region data-distribution ablation.
+- [docs/prediction_calibration.md](docs/prediction_calibration.md): edge-compression and output-calibration diagnostic.
 - [EXPERIMENTS.md](EXPERIMENTS.md): historical model notes.
 
 Run the no-webcam smoke test:
@@ -183,6 +184,7 @@ Models and training:
 - [train_vision_model.py](train_vision_model.py): trains one live checkpoint.
 - [scaling_experiments.py](scaling_experiments.py): canonical architecture/data/epoch/parameter sweeps.
 - [data_distribution_ablation.py](data_distribution_ablation.py): natural-vs-region-balanced training diagnostic.
+- [prediction_calibration_analysis.py](prediction_calibration_analysis.py): output-calibration and edge-compression diagnostic.
 - [smoke_test.py](smoke_test.py): no-webcam import, compile, and model-forward smoke test.
 
 Historical/support scripts:

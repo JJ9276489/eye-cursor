@@ -2,7 +2,7 @@
 
 This is a public, non-private summary of the local experiments. The raw data, trained checkpoints, and full generated reports are intentionally not committed because they are user-specific and screen-specific.
 
-Documented: `2026-04-19`
+Documented: `2026-04-19`; updated with the data-distribution diagnostic on `2026-04-21`.
 
 Source reports generated from the local working tree on `2026-04-19`.
 
@@ -119,6 +119,19 @@ python scaling_experiments.py \
   --early-stopping-patience 4 \
   --early-stopping-min-epochs 8
 ```
+
+## Data Distribution Check
+
+Latest diagnostic: [data_distribution.md](data_distribution.md).
+
+A 3-seed label-holdout ablation tested the hypothesis that uneven screen-region training density is the main current bottleneck. The test compared the natural collector distribution against a constant-size region-balanced resampling setup for `spatial_geom 0.5x`.
+
+| Variant | Capture MAE Mean | Std |
+| --- | ---: | ---: |
+| `natural` | `89.2px` | `3.9px` |
+| `region_balanced` | `88.1px` | `4.0px` |
+
+Interpretation: region balancing produced only a `1.1px` mean gain, smaller than seed-to-seed variance. Do not make balanced training the default yet; keep collecting session-diverse data with broad screen coverage.
 
 ## Live Checkpoint
 

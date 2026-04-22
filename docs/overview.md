@@ -8,6 +8,7 @@ This repo is organized around a webcam-only personalized gaze cursor prototype.
 - Preview-focused launcher: `live_preview.py`
 - Training entrypoint: `train_vision_model.py`
 - Architecture/scaling evaluator: `scaling_experiments.py`
+- Data-distribution diagnostic: `data_distribution_ablation.py`
 - Current model family: `spatial_geom`
 - Results snapshot: `docs/results.md`
 
@@ -23,6 +24,7 @@ This repo is organized around a webcam-only personalized gaze cursor prototype.
 - `vision_dataset.py`: dataset loading and tensor construction.
 - `vision_training.py`: shared training loop.
 - `mapper.py`: polynomial ridge baseline.
+- `data_distribution_ablation.py`: natural-vs-region-balanced training diagnostic.
 
 ## Historical And Support Scripts
 

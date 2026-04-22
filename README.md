@@ -46,6 +46,7 @@ Useful keys:
 Project docs:
 - [docs/overview.md](docs/overview.md): entrypoints, code layout, local checks, and artifact policy.
 - [docs/results.md](docs/results.md): latest local results snapshot and caveats.
+- [docs/data_distribution.md](docs/data_distribution.md): screen-region data-distribution ablation.
 - [EXPERIMENTS.md](EXPERIMENTS.md): historical model notes.
 
 Run the no-webcam smoke test:
@@ -87,6 +88,7 @@ python live_preview.py
 The live runtime loads checkpoints in this priority order:
 - `vision-spatial-geom`: `models/vision_gaze_spatial_geom.pt`
 - `vision-spatial`: `models/vision_gaze_spatial.pt`
+- `vision-clifford`: `models/vision_gaze_clifford.pt`
 - `vision-concat`: `models/vision_gaze_latest.pt`
 - `vision-attn`: `models/vision_gaze_attention_matched.pt`
 - `ridge`: latest compatible ridge mapper
@@ -97,8 +99,8 @@ Missing checkpoints are skipped.
 
 Current local compatible dataset:
 - `22` sessions
-- `387` captures
-- `11,018` frame samples
+- `399` captures
+- `11,363` frame samples
 - screen size: `1440x900`
 
 Current model families:
@@ -106,6 +108,7 @@ Current model families:
 - `concat`: old CNN eye-crop baseline with global average pooling.
 - `spatial`: CNN eye-crop model that preserves the final spatial feature grid.
 - `spatial_geom`: spatial CNN plus engineered eye-geometry scalars.
+- `clifford`: experimental Clifford/geometric-algebra-inspired spatial eye encoder.
 - `attn`: previous token-attention fusion baseline.
 - `vit`: tiny patch transformer comparison line.
 
@@ -179,6 +182,7 @@ Models and training:
 - [vision_training.py](vision_training.py): shared frame-model training loop.
 - [train_vision_model.py](train_vision_model.py): trains one live checkpoint.
 - [scaling_experiments.py](scaling_experiments.py): canonical architecture/data/epoch/parameter sweeps.
+- [data_distribution_ablation.py](data_distribution_ablation.py): natural-vs-region-balanced training diagnostic.
 - [smoke_test.py](smoke_test.py): no-webcam import, compile, and model-forward smoke test.
 
 Historical/support scripts:

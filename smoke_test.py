@@ -13,6 +13,7 @@ from vision_model import (
     EyeCropModelConfig,
     EyeCropRegressor,
     best_frame_vision_config,
+    clifford_frame_vision_config,
     matched_attention_frame_vision_config,
     spatial_frame_vision_config,
     spatial_geometry_frame_vision_config,
@@ -87,6 +88,7 @@ def main() -> None:
         "attn": matched_attention_frame_vision_config(),
         "spatial": spatial_frame_vision_config(),
         "spatial_geom": spatial_geometry_frame_vision_config(),
+        "clifford": clifford_frame_vision_config(),
         "vit": tiny_patch_transformer_frame_vision_config(),
     }
     for name, config in model_configs.items():

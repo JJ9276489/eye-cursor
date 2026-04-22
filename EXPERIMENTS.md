@@ -29,6 +29,14 @@ Historical entries below are notes from earlier report paths and dataset snapsho
   - `label_holdout`: `92.7px`
   - `region_holdout`: `161.0px`
 
+### `clifford`
+- type: Clifford/geometric-algebra-inspired eye encoder + head/face features
+- status: experimental
+- reason: tests whether local geometric-product-style interactions improve eye-crop encoding over standard CNN and patch-transformer branches
+- best known completed result:
+  - `label_holdout`: `92.8px`
+  - `region_holdout`: `180.0px`
+
 ### `ridge`
 - type: polynomial ridge over engineered eye/head features
 - status: keep
@@ -107,6 +115,11 @@ Historical entries below are notes from earlier report paths and dataset snapsho
   - `spatial_geom 0.5x`: `163.9px`
   - `concat 1.5x`: `207.1px`
   - implication: region holdout is worth keeping; spatial layout preservation transfers, while the extra geometry scalars are not a clear region-holdout win overall
+- Region distribution ablation:
+  - docs: [docs/data_distribution.md](docs/data_distribution.md)
+  - `spatial_geom 0.5x` natural label-holdout mean across 3 seeds: `89.2px`
+  - `spatial_geom 0.5x` region-balanced label-holdout mean across 3 seeds: `88.1px`
+  - implication: region-balanced sampling is not clearly worth making the default; the effect is smaller than seed variance
 - Earlier full strict comparisons established the current frame tradeoff:
   - `session_holdout`: `frame_attention_matched_long` `191.3px`, `frame_wide_aug_long` `215.1px`, `ridge` `271.4px`
   - `region_holdout`: `frame_wide_aug_long` `97.5px`, `frame_attention_matched_long` `123.6px`, `ridge` `148.0px`

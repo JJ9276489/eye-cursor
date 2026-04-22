@@ -31,6 +31,8 @@ class EyeCropModelConfig:
     patch_layers: int = 2
     patch_heads: int = 4
     patch_dropout: float = 0.1
+    clifford_blades: int = 4
+    clifford_kernel_size: int = 3
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -58,6 +60,8 @@ class EyeCropModelConfig:
             patch_layers=int(payload.get("patch_layers", cls().patch_layers)),
             patch_heads=int(payload.get("patch_heads", cls().patch_heads)),
             patch_dropout=float(payload.get("patch_dropout", cls().patch_dropout)),
+            clifford_blades=int(payload.get("clifford_blades", cls().clifford_blades)),
+            clifford_kernel_size=int(payload.get("clifford_kernel_size", cls().clifford_kernel_size)),
         )
 
 
@@ -120,6 +124,19 @@ def tiny_patch_transformer_frame_vision_config() -> EyeCropModelConfig:
         patch_layers=2,
         patch_heads=4,
         patch_dropout=0.1,
+    )
+
+
+def clifford_frame_vision_config() -> EyeCropModelConfig:
+    return EyeCropModelConfig(
+        encoder_channels=(16, 24, 32, 32),
+        encoder_type="clifford",
+        eye_coord_channels=True,
+        head_hidden_dims=(48, 48),
+        regressor_hidden_dims=(128, 64),
+        dropout=0.15,
+        clifford_blades=4,
+        clifford_kernel_size=3,
     )
 
 
@@ -207,6 +224,133 @@ class PatchEyeEncoder(nn.Module):
         return self.norm(encoded[:, 0, :])
 
 
+class CliffordProductBlock(nn.Module):
+    def __init__(
+        self,
+        channels: int,
+        blades: int = 4,
+        kernel_size: int = 3,
+    ) -> None:
+        super().__init__()
+        if blades != 4:
+            raise ValueError("CliffordProductBlock currently implements Cl(2,0) with 4 blades")
+        if kernel_size % 2 == 0:
+            raise ValueError("clifford_kernel_size must be odd")
+
+        self.channels = channels
+        self.blades = blades
+        width = channels * blades
+        padding = kernel_size // 2
+        self.norm = nn.GroupNorm(num_groups=blades, num_channels=width)
+        self.local_mixer = nn.Sequential(
+            nn.Conv2d(width, width, kernel_size=kernel_size, padding=padding, groups=width),
+            nn.Conv2d(width, width, kernel_size=1, groups=blades),
+            nn.GELU(),
+        )
+        self.product_projection = nn.Sequential(
+            nn.Conv2d(width, width, kernel_size=1),
+            nn.GELU(),
+            nn.Conv2d(width, width, kernel_size=1),
+        )
+        self.residual_scale = nn.Parameter(torch.tensor(0.1))
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        normalized = self.norm(features)
+        local = self.local_mixer(normalized)
+        product = self.geometric_product(normalized, local)
+        return features + self.residual_scale * self.product_projection(product)
+
+    def geometric_product(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+        batch_size, _, height, width = left.shape
+        left_blades = left.reshape(batch_size, self.blades, self.channels, height, width)
+        right_blades = right.reshape(batch_size, self.blades, self.channels, height, width)
+        left_scalar, left_e1, left_e2, left_bivector = left_blades.unbind(dim=1)
+        right_scalar, right_e1, right_e2, right_bivector = right_blades.unbind(dim=1)
+
+        # Cl(2,0) geometric product:
+        # scalar + e1 + e2 + e12 components are multiplied with the sign
+        # pattern induced by e1^2 = e2^2 = 1 and e12^2 = -1. This gives the
+        # block a local bilinear interaction that is more structured than a
+        # generic pointwise MLP while remaining lightweight and stable.
+        product_scalar = (
+            left_scalar * right_scalar
+            + left_e1 * right_e1
+            + left_e2 * right_e2
+            - left_bivector * right_bivector
+        )
+        product_e1 = (
+            left_scalar * right_e1
+            + left_e1 * right_scalar
+            - left_e2 * right_bivector
+            + left_bivector * right_e2
+        )
+        product_e2 = (
+            left_scalar * right_e2
+            + left_e2 * right_scalar
+            + left_e1 * right_bivector
+            - left_bivector * right_e1
+        )
+        product_bivector = (
+            left_scalar * right_bivector
+            + left_bivector * right_scalar
+            + left_e1 * right_e2
+            - left_e2 * right_e1
+        )
+        return torch.stack(
+            [product_scalar, product_e1, product_e2, product_bivector],
+            dim=1,
+        ).reshape(batch_size, self.blades * self.channels, height, width)
+
+
+class CliffordEyeEncoder(nn.Module):
+    def __init__(
+        self,
+        channels: tuple[int, ...],
+        input_channels: int = 1,
+        blades: int = 4,
+        kernel_size: int = 3,
+    ) -> None:
+        super().__init__()
+        if not channels:
+            raise ValueError("CliffordEyeEncoder requires at least one channel width")
+        if blades != 4:
+            raise ValueError("CliffordEyeEncoder currently implements Cl(2,0) with 4 blades")
+
+        first_width = channels[0] * blades
+        layers: list[nn.Module] = [
+            nn.Conv2d(input_channels, first_width, kernel_size=3, stride=2, padding=1),
+            nn.GELU(),
+            CliffordProductBlock(channels[0], blades=blades, kernel_size=kernel_size),
+        ]
+        in_channels = channels[0]
+        for out_channels in channels[1:]:
+            layers.extend(
+                [
+                    nn.GroupNorm(num_groups=blades, num_channels=in_channels * blades),
+                    nn.Conv2d(
+                        in_channels * blades,
+                        out_channels * blades,
+                        kernel_size=3,
+                        stride=2,
+                        padding=1,
+                    ),
+                    nn.GELU(),
+                    CliffordProductBlock(out_channels, blades=blades, kernel_size=kernel_size),
+                ]
+            )
+            in_channels = out_channels
+
+        self.layers = nn.Sequential(*layers)
+        with torch.no_grad():
+            dummy = torch.zeros(1, input_channels, EYE_CROP_HEIGHT, EYE_CROP_WIDTH)
+            encoded = self.layers(dummy)
+        self.output_dim = int(encoded.flatten(start_dim=1).shape[1])
+
+    def forward(self, eye_image: torch.Tensor) -> torch.Tensor:
+        encoded = self.layers(eye_image)
+        return encoded.flatten(start_dim=1)
+
+
 class EyeCropRegressor(nn.Module):
     def __init__(
         self,
@@ -232,6 +376,13 @@ class EyeCropRegressor(nn.Module):
                 layers=self.config.patch_layers,
                 heads=self.config.patch_heads,
                 dropout=self.config.patch_dropout,
+            )
+        elif self.config.encoder_type == "clifford":
+            self.eye_encoder = CliffordEyeEncoder(
+                self.config.encoder_channels,
+                input_channels=self.eye_input_channels,
+                blades=self.config.clifford_blades,
+                kernel_size=self.config.clifford_kernel_size,
             )
         else:
             raise ValueError(f"Unsupported eye encoder type: {self.config.encoder_type}")

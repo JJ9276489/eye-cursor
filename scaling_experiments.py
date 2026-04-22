@@ -34,6 +34,7 @@ from vision_model import (
     EyeCropModelConfig,
     EyeCropRegressor,
     best_frame_vision_config,
+    clifford_frame_vision_config,
     matched_attention_frame_vision_config,
     spatial_frame_vision_config,
     spatial_geometry_frame_vision_config,
@@ -42,6 +43,7 @@ from vision_model import (
 from vision_training import choose_device, seed_everything, train_frame_model
 
 
+MODEL_CHOICES = ["concat", "spatial", "spatial_geom", "clifford", "vit", "attn"]
 DEFAULT_MODELS = ["concat", "spatial", "spatial_geom", "vit", "attn"]
 DEFAULT_PARAM_MULTIPLIERS = [0.5, 0.75, 1.0, 1.25, 1.5]
 DEFAULT_DATA_FRACTIONS = [0.15, 0.25, 0.4, 0.6, 0.8, 1.0]
@@ -51,6 +53,7 @@ CACHE_DIR = ROOT_DIR / ".cache" / "scaling"
 PLOT_STYLE = {
     "attn": {"label": "Attention", "color": "#3b82f6"},
     "concat": {"label": "Concat", "color": "#16a34a"},
+    "clifford": {"label": "Clifford-Inspired", "color": "#0891b2"},
     "spatial": {"label": "Spatial CNN", "color": "#ea580c"},
     "spatial_geom": {"label": "Spatial CNN + Geometry", "color": "#dc2626"},
     "vit": {"label": "Tiny Patch Transformer", "color": "#7c3aed"},
@@ -105,7 +108,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--models",
         nargs="+",
-        choices=DEFAULT_MODELS,
+        choices=MODEL_CHOICES,
         default=DEFAULT_MODELS,
         help="Model families to sweep.",
     )
@@ -213,6 +216,8 @@ def base_config_for_model(model_key: str) -> EyeCropModelConfig:
         return spatial_frame_vision_config()
     if model_key == "spatial_geom":
         return spatial_geometry_frame_vision_config()
+    if model_key == "clifford":
+        return clifford_frame_vision_config()
     if model_key == "vit":
         return tiny_patch_transformer_frame_vision_config()
     return best_frame_vision_config()
@@ -251,6 +256,8 @@ def scale_config(base: EyeCropModelConfig, multiplier: float) -> EyeCropModelCon
         patch_layers=base.patch_layers,
         patch_heads=patch_heads,
         patch_dropout=base.patch_dropout,
+        clifford_blades=base.clifford_blades,
+        clifford_kernel_size=base.clifford_kernel_size,
     )
 
 

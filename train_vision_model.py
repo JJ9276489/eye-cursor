@@ -15,6 +15,8 @@ from constants import (
     VISION_LEARNING_RATE,
     VISION_ATTENTION_MATCHED_METRICS_PATH,
     VISION_ATTENTION_MATCHED_MODEL_PATH,
+    VISION_CLIFFORD_METRICS_PATH,
+    VISION_CLIFFORD_MODEL_PATH,
     VISION_WEIGHT_DECAY,
 )
 from vision_dataset import (
@@ -28,6 +30,7 @@ from vision_model import (
     VisionCheckpointMetadata,
     best_frame_vision_config,
     build_checkpoint_payload,
+    clifford_frame_vision_config,
     matched_attention_frame_vision_config,
     spatial_frame_vision_config,
     spatial_geometry_frame_vision_config,
@@ -54,7 +57,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument(
         "--model",
-        choices=["attn", "concat", "spatial", "spatial_geom", "vit"],
+        choices=["attn", "clifford", "concat", "spatial", "spatial_geom", "vit"],
         default="attn",
         help="Which live vision model to train.",
     )
@@ -85,6 +88,8 @@ def output_paths_for_model(model: str) -> tuple[Path, Path]:
         return VISION_ATTENTION_MATCHED_MODEL_PATH, VISION_ATTENTION_MATCHED_METRICS_PATH
     if model == "concat":
         return VISION_CONCAT_MODEL_PATH, VISION_CONCAT_METRICS_PATH
+    if model == "clifford":
+        return VISION_CLIFFORD_MODEL_PATH, VISION_CLIFFORD_METRICS_PATH
     return (
         ROOT_DIR / "models" / f"vision_gaze_{model}.pt",
         ROOT_DIR / "models" / f"vision_gaze_{model}.json",
@@ -98,6 +103,8 @@ def config_for_model(model: str):
         return spatial_frame_vision_config()
     if model == "spatial_geom":
         return spatial_geometry_frame_vision_config()
+    if model == "clifford":
+        return clifford_frame_vision_config()
     if model == "vit":
         return tiny_patch_transformer_frame_vision_config()
     return best_frame_vision_config()

@@ -4,6 +4,7 @@ from pathlib import Path
 from collector import set_status_message
 from constants import (
     VISION_ATTENTION_MATCHED_MODEL_PATH,
+    VISION_CLIFFORD_MODEL_PATH,
     VISION_CONCAT_MODEL_PATH,
     VISION_SPATIAL_GEOMETRY_MODEL_PATH,
     VISION_SPATIAL_MODEL_PATH,
@@ -27,6 +28,7 @@ def vision_checkpoints() -> list[VisionCheckpointSpec]:
     return [
         ("vision_spatial_geom", "vision-spatial-geom", VISION_SPATIAL_GEOMETRY_MODEL_PATH),
         ("vision_spatial", "vision-spatial", VISION_SPATIAL_MODEL_PATH),
+        ("vision_clifford", "vision-clifford", VISION_CLIFFORD_MODEL_PATH),
         ("vision_concat", "vision-concat", VISION_CONCAT_MODEL_PATH),
         ("vision_attention_matched", "vision-attn", VISION_ATTENTION_MATCHED_MODEL_PATH),
     ]

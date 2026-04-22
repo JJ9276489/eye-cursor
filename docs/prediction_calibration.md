@@ -2,9 +2,9 @@
 
 Documented: `2026-04-21`
 
-This diagnostic tests whether the current NN model fails near screen edges mainly because its bounded `[0, 1]` sigmoid output compresses predictions toward the center.
+This diagnostic tests whether the current NN model fails near screen edges mainly because its bounded `[0, 1]` sigmoid output compresses predictions toward the center. It is a local checkpoint diagnostic, not a public benchmark.
 
-Raw generated reports are local and ignored under `reports/calibration/`. This page records the method and compact result summary.
+Raw generated reports are local and ignored under `reports/calibration/`. This page records the command shape and compact result summary. Exact numbers require the same local personalized dataset and checkpoint.
 
 ## Setup
 

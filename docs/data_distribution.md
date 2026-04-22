@@ -2,9 +2,9 @@
 
 Documented: `2026-04-21`
 
-This diagnostic tests whether the neural gaze model is mainly limited by uneven screen-region training density.
+This diagnostic tests whether the neural gaze model is mainly limited by uneven screen-region training density. It is a local label-holdout diagnostic, not a public benchmark.
 
-Raw generated reports are local and ignored under `reports/distribution/`. This page keeps the reproducible method and compact result summary.
+Raw generated reports are local and ignored under `reports/distribution/`. This page keeps the command shape and compact result summary. Exact numbers require the same local personalized dataset.
 
 ## Setup
 

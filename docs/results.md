@@ -1,12 +1,21 @@
-# Results Snapshot
+# Local Results Snapshot
 
-This is a public, non-private summary of the local experiments. The raw data, trained checkpoints, and full generated reports are intentionally not committed because they are user-specific and screen-specific.
+This page documents local personalized experiments. It is meant to make the current evidence inspectable without publishing raw biometric-ish data or local checkpoints.
 
-Documented: `2026-04-19`; updated with the data-distribution and prediction-calibration diagnostics on `2026-04-21`.
+The numbers below are not a public benchmark. They are local result snapshots from one user, one screen/camera setup, and ignored local artifacts.
 
-Source reports generated from the local working tree on `2026-04-19`.
+Documented: `2026-04-19`; updated with data-distribution and prediction-calibration diagnostics on `2026-04-21`.
+
+## How To Read This Page
+
+- Main robustness evidence: `session_holdout`. Cite this first when discussing whether the current model generalizes beyond the specific recording session it trained on.
+- Internal model filtering: `label_holdout`. Use this for fast architecture comparisons, not as the main robustness claim.
+- Spatial extrapolation stress test: `region_holdout`. Use this to check whether a model collapses when a screen region is absent from training.
+- Reproducibility boundary: raw sessions, trained checkpoints, and generated reports are ignored by git. The documented numbers cannot be exactly reproduced from the public repo alone.
 
 ## Dataset
+
+Primary result snapshot:
 
 - Screen: `1440x900`
 - Sessions: `22`
@@ -14,19 +23,21 @@ Source reports generated from the local working tree on `2026-04-19`.
 - Frame samples: `11,018`
 - Collection style: manual target placement, 1-second capture windows, aligned eye crops plus MediaPipe face/head features
 
+Later diagnostics on this page use a compatible newer local dataset snapshot with `399` captures and `11,363` frame samples. Those sections are labeled separately. The difference is ordinary local data growth, not a public dataset revision.
+
 ## Metrics
 
 - `capture_mae_distance_px`: mean Euclidean pixel error after aggregating frame predictions within each capture.
 - `capture_mae_x_px` / `capture_mae_y_px`: absolute pixel error by axis after capture aggregation.
-- `label_holdout`: train/eval split from collector labels. Useful for fast architecture filtering, but easier than real deployment.
+- `label_holdout`: train/eval split from collector labels. Useful for fast architecture filtering. Easier than deployment because train and eval captures can come from similar sessions.
 - `session_holdout`: leave-session-out evaluation. This is the main robustness metric because it tests generalization across collection sessions.
-- `region_holdout`: leave-screen-region-out evaluation. This tests whether the model extrapolates to regions of the screen that were not present in training.
+- `region_holdout`: leave-screen-region-out evaluation. This tests extrapolation to screen regions that are absent from training.
 
 ## Current Holdout Summary
 
 ![Current holdout summary](assets/results/holdout_summary.svg)
 
-`spatial_geom 0.5x` remains the current live model because it has the best dense label-holdout result and the focused strict session-holdout result. The new region-holdout gate shows that spatial extrapolation is harder than the other measured splits.
+`spatial_geom 0.5x` is the current selected live model line. The selection is based on the completed local comparisons, especially the focused `session_holdout` run. The `label_holdout` result explains why it was promoted for deeper checks; the `region_holdout` result shows that spatial extrapolation is still harder.
 
 | Holdout | Model | Capture MAE |
 | --- | --- | ---: |
@@ -46,6 +57,8 @@ Source reports generated from the local working tree on `2026-04-19`.
 - Average fold size: `369.4` train captures / `17.6` eval captures
 - Source report: ignored local file `reports/scaling/session_holdout_spatial_geom/summary.json`
 
+Interpretation: this is the main robustness result in the repo today. It is still local and personalized, but it is stricter than label holdout because whole sessions are excluded from training.
+
 Command shape:
 
 ```bash
@@ -61,9 +74,9 @@ python scaling_experiments.py \
 
 ## Architecture Sweep
 
-Latest completed dense architecture sweep used `label_holdout` for speed.
+The dense architecture sweep used `label_holdout` for speed. Treat this as internal model filtering, not the main robustness result.
 
-| Model | Best Capture MAE | Best Spec |
+| Model | Lowest Local Capture MAE | Spec |
 | --- | ---: | --- |
 | `spatial_geom` | `86.9px` | `param_multiplier=0.50` |
 | `spatial` | `92.7px` | `param_multiplier=0.50` |
@@ -71,7 +84,7 @@ Latest completed dense architecture sweep used `label_holdout` for speed.
 | `attn` | `128.5px` | `param_multiplier=1.25` |
 | `vit` | `141.3px` | `param_multiplier=0.50` |
 
-Interpretation: preserving spatial layout in the eye-crop CNN is the strongest observed architecture change so far. The attention and tiny patch-transformer lines were not competitive on this dataset.
+Interpretation: preserving spatial layout in the eye-crop CNN is the strongest observed architecture change in the local label-holdout sweep. The attention and tiny patch-transformer lines were not competitive in this comparison.
 
 ## Region Holdout Gate
 
@@ -122,7 +135,7 @@ python scaling_experiments.py \
 
 ## Data Distribution Check
 
-Latest diagnostic: [data_distribution.md](data_distribution.md).
+Diagnostic details: [data_distribution.md](data_distribution.md). This check used the newer `399`-capture local dataset snapshot.
 
 A 3-seed label-holdout ablation tested the hypothesis that uneven screen-region training density is the main current bottleneck. The test compared the natural collector distribution against a constant-size region-balanced resampling setup for `spatial_geom 0.5x`.
 
@@ -135,7 +148,7 @@ Interpretation: region balancing produced only a `1.1px` mean gain, smaller than
 
 ## Prediction Calibration Check
 
-Latest diagnostic: [prediction_calibration.md](prediction_calibration.md).
+Diagnostic details: [prediction_calibration.md](prediction_calibration.md). This check used the newer `399`-capture local dataset snapshot and the local `spatial_geom 0.5x` checkpoint.
 
 This tested whether edge failures are mostly caused by the sigmoid-bounded NN output compressing predictions toward the center. Raw predictions do show inward edge bias:
 
@@ -152,7 +165,7 @@ Interpretation: do not wire in a global exponential/logit edge-expansion curve a
 
 ## Live Checkpoint
 
-The current local live checkpoint is trained as `spatial_geom 0.5x`.
+The current local live checkpoint is trained as `spatial_geom 0.5x`. This section describes the local runtime artifact, not a public checkpoint.
 
 - Train samples: `8,803`
 - Eval samples: `2,215`
@@ -160,6 +173,8 @@ The current local live checkpoint is trained as `spatial_geom 0.5x`.
 - Device: `mps`
 - Random split eval: `61.5px x / 61.9px y`
 - Source metadata: ignored local file `models/vision_gaze_spatial_geom.json`
+
+The random split trainer eval is useful for checking that training did not fail. It is easier than `session_holdout` and should not be cited as the main quality estimate.
 
 Command:
 

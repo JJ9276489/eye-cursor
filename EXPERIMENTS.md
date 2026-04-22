@@ -1,22 +1,22 @@
 # Experiments
 
-This file records model lines that were tested and whether they are still worth carrying in the codebase.
+This file records model lines that were tested and whether they are still worth carrying in the codebase. Use it as experiment history, not as the primary evaluation summary.
 
 Current canonical result snapshot: [docs/results.md](docs/results.md).
 
 Project overview: [docs/overview.md](docs/overview.md).
 
-As of `2026-04-19`, the practical main line is `spatial_geom 0.5x`: spatial eye-crop CNN plus head/face features plus engineered eye-geometry scalars. Older `frame_*` names are retained as historical benchmark labels.
+As of the documented local result snapshot, the practical main line is `spatial_geom 0.5x`: spatial eye-crop CNN plus head/face features plus engineered eye-geometry scalars. Older `frame_*` names are retained as historical benchmark labels.
 
-Historical entries below are notes from earlier report paths and dataset snapshots. Use [docs/results.md](docs/results.md) for the current compact result summary.
+Historical entries below are notes from earlier report paths and dataset snapshots. They are useful for context but are not always directly comparable to the current snapshot. Use [docs/results.md](docs/results.md) for the current compact result summary.
 
-## Active
+## Carried In Code
 
 ### `spatial_geom`
 - type: spatial eye-crop CNN + head/face features + engineered eye-geometry scalars
 - status: current main line
-- reason: best completed label-holdout result and best focused strict session-holdout result for the newer architecture family
-- best known completed result:
+- reason: strongest completed local label-holdout result and focused strict session-holdout result for the newer architecture family
+- documented local result:
   - `label_holdout`: `86.9px`
   - `session_holdout`: `134.9px`
   - `region_holdout`: `163.9px`
@@ -25,7 +25,7 @@ Historical entries below are notes from earlier report paths and dataset snapsho
 - type: spatial eye-crop CNN + head/face features
 - status: active candidate
 - reason: isolates the benefit of preserving eye-crop spatial layout
-- best known completed result:
+- documented local result:
   - `label_holdout`: `92.7px`
   - `region_holdout`: `161.0px`
 
@@ -33,7 +33,7 @@ Historical entries below are notes from earlier report paths and dataset snapsho
 - type: Clifford/geometric-algebra-inspired eye encoder + head/face features
 - status: experimental
 - reason: tests whether local geometric-product-style interactions improve eye-crop encoding over standard CNN and patch-transformer branches
-- best known completed result:
+- documented local result:
   - `label_holdout`: `92.8px`
   - `region_holdout`: `180.0px`
 
@@ -46,14 +46,14 @@ Historical entries below are notes from earlier report paths and dataset snapsho
 - type: wide eye-crop CNN + head/face features + concat fusion
 - status: historical benchmark
 - reason: useful comparison point, but no longer the main architecture line
-- best known strict result:
+- documented local historical result:
   - `region_holdout`: `97.5px`
 
 ### `frame_attention_matched_long`
 - type: parameter-matched eye-crop CNN + head/face features + token attention fusion
 - status: historical benchmark
 - reason: useful comparison point for attention fusion, but not the current main architecture line
-- best known strict result:
+- documented local historical result:
   - `session_holdout`: `191.3px`
 
 ## Discarded

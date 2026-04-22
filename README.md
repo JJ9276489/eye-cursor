@@ -2,13 +2,38 @@
 
 [![Smoke](https://github.com/JJ9276489/eye-cursor/actions/workflows/smoke.yml/badge.svg)](https://github.com/JJ9276489/eye-cursor/actions/workflows/smoke.yml)
 
-Webcam gaze-cursor research prototype using MediaPipe face tracking, aligned eye crops, and small personalized gaze models.
+Webcam-only personalized gaze-cursor prototype using MediaPipe face landmarks, aligned eye crops, and small local gaze models.
 
-The current direction is personalized webcam-only gaze estimation: collect screen-targeted samples, train a local model, then preview the predicted gaze point in real time.
+This project asks a narrow HMI question: how far can a commodity webcam, per-user calibration data, and lightweight personalized models get toward usable gaze-based cursor control?
 
-## Quick Live Preview
+It is not a polished assistive product, not a public benchmark, and not a claim of state-of-the-art webcam gaze tracking.
+
+## Implemented Now
+
+- Manual gaze-data collection against a fullscreen target.
+- MediaPipe face landmark tracking and head/face feature extraction.
+- Affine-aligned left/right eye crops at `96x64`.
+- Local personalized training for several small model families.
+- Live preview that renders predicted gaze points when a compatible local checkpoint exists.
+- Evaluation scripts for label holdout, session holdout, region holdout, scaling sweeps, data-distribution checks, and output-calibration diagnostics.
+
+Current model path:
+
+```text
+webcam frame
+  -> MediaPipe face landmarks
+  -> aligned left/right eye crops + head/face/eye-geometry features
+  -> personalized spatial CNN gaze model
+  -> normalized screen prediction
+  -> live preview cursor overlay
+```
+
+The current main model family is `spatial_geom 0.5x`: a compact spatial eye-crop CNN that preserves the final eye feature grid, then fuses that visual representation with head/face features and engineered eye-geometry scalars.
+
+## Quickstart
 
 Requirements:
+
 - Python 3.11+
 - webcam access
 - macOS is the most tested path so far
@@ -24,41 +49,31 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Start the preview-focused app:
-
-```bash
-python live_preview.py
-```
-
-`live_preview.py` starts the gaze preview immediately and hides the fullscreen data-collection target. The webcam/debug window still opens because it shows face tracking, eye crops, model status, and key controls.
-
-First launch downloads the MediaPipe face landmarker model into `models/`. Trained gaze checkpoints are not committed to the repo because they are local, screen-specific, and user-specific. Without a local checkpoint the preview will open, but it will show `No prediction available` until you collect data and train a model.
-
-Useful keys:
-- `g`: toggle gaze preview.
-- `v`: switch active prediction model.
-- `m`: show or hide the collection target screen.
-- `c`: clear the signal history plot.
-- `q` or `Esc`: quit.
-
-## Documentation
-
-Project docs:
-- [docs/overview.md](docs/overview.md): entrypoints, code layout, local checks, and artifact policy.
-- [docs/results.md](docs/results.md): latest local results snapshot and caveats.
-- [docs/data_distribution.md](docs/data_distribution.md): screen-region data-distribution ablation.
-- [docs/prediction_calibration.md](docs/prediction_calibration.md): edge-compression and output-calibration diagnostic.
-- [EXPERIMENTS.md](EXPERIMENTS.md): historical model notes.
-
 Run the no-webcam smoke test:
 
 ```bash
 python smoke_test.py
 ```
 
-CI runs a lightweight Python compile check on pushes and pull requests. The local smoke test is deeper because it instantiates the model families and requires the project dependencies.
+The smoke test compiles tracked Python files, instantiates the neural model families, runs small CPU forward passes, and verifies checkpoint discovery metadata. It does not require private data, trained checkpoints, or webcam access.
 
-## Collect And Train
+Run the preview-focused app:
+
+```bash
+python live_preview.py
+```
+
+First launch downloads the MediaPipe face landmarker into `models/`. Trained gaze checkpoints are not committed because they are local, screen-specific, and user-specific. Without a local checkpoint, the preview still opens but reports that no prediction is available.
+
+Useful runtime keys:
+
+- `g`: toggle gaze preview.
+- `v`: cycle loaded prediction models.
+- `m`: show or hide the fullscreen collection target.
+- `c`: clear the signal history plot.
+- `q` or `Esc`: quit.
+
+## Collect, Train, Evaluate
 
 Run the full collection app:
 
@@ -67,6 +82,7 @@ python main.py
 ```
 
 Collection flow:
+
 - Move the target with the mouse.
 - Fix your gaze on the target.
 - Press `space` to record a 1-second capture.
@@ -78,127 +94,125 @@ Train the current main model:
 python train_vision_model.py --model spatial_geom --param-multiplier 0.5 --epochs 20 --device mps
 ```
 
-On non-Apple hardware, replace `--device mps` with `--device cpu` or a supported PyTorch device.
+On non-Apple hardware, replace `--device mps` with `--device cpu` or another supported PyTorch device.
 
-Then run:
+Run the live preview after training:
 
 ```bash
 python live_preview.py
 ```
 
-The live runtime loads checkpoints in this priority order:
-- `vision-spatial-geom`: `models/vision_gaze_spatial_geom.pt`
-- `vision-spatial`: `models/vision_gaze_spatial.pt`
-- `vision-clifford`: `models/vision_gaze_clifford.pt`
-- `vision-concat`: `models/vision_gaze_latest.pt`
-- `vision-attn`: `models/vision_gaze_attention_matched.pt`
-- `ridge`: latest compatible ridge mapper
-
-Missing checkpoints are skipped.
-
-## Current State
-
-Current local compatible dataset:
-- `22` sessions
-- `399` captures
-- `11,363` frame samples
-- screen size: `1440x900`
-
-Current model families:
-- `ridge`: polynomial ridge baseline over engineered gaze/head features.
-- `concat`: old CNN eye-crop baseline with global average pooling.
-- `spatial`: CNN eye-crop model that preserves the final spatial feature grid.
-- `spatial_geom`: spatial CNN plus engineered eye-geometry scalars.
-- `clifford`: experimental Clifford/geometric-algebra-inspired spatial eye encoder.
-- `attn`: previous token-attention fusion baseline.
-- `vit`: tiny patch transformer comparison line.
-
-Best current strict session-holdout result:
-- `spatial_geom 0.5x`: about `134.9px` capture MAE.
-
-Best current label-holdout architecture result:
-- `spatial_geom`: about `86.9px` capture MAE.
-
-Important caveat:
-- Label holdout is useful for filtering architecture ideas.
-- Session holdout is the main robustness metric because it tests generalization across recording sessions.
-
-Historical model notes live in [EXPERIMENTS.md](EXPERIMENTS.md).
-
-The current public result snapshot lives in [docs/results.md](docs/results.md).
-
-## Evaluation
-
-Run canonical scaling sweeps:
-
-```bash
-python scaling_experiments.py --mode label_holdout --device mps
-```
-
-Focused strict architecture check:
+Run a focused label-holdout check:
 
 ```bash
 python scaling_experiments.py \
   --device mps \
-  --output-dir reports/scaling/session_holdout_top \
-  --mode session_holdout \
-  --models concat spatial spatial_geom \
+  --output-dir reports/scaling/label_holdout_spatial_geom \
+  --mode label_holdout \
+  --models spatial_geom \
   --sweeps parameters \
-  --param-multipliers 0.5 1.5 \
+  --param-multipliers 0.5 \
   --epochs 20
 ```
 
-Outputs:
-- JSON summary: `reports/scaling/<run>/summary.json`
-- text summary: `reports/scaling/<run>/summary.txt`
-- flat points table: `reports/scaling/<run>/points.csv`
-- plots: `reports/scaling/<run>/*.png`
-- transform fit summary: `reports/scaling/<run>/transforms/fit_summary.txt`
+Run the current strict session-holdout check for the main model:
 
-Scaling runs cache fold/point results under `.cache/scaling`, so interrupted runs can resume without retraining completed points.
+```bash
+python scaling_experiments.py \
+  --device mps \
+  --output-dir reports/scaling/session_holdout_spatial_geom \
+  --mode session_holdout \
+  --models spatial_geom \
+  --sweeps parameters \
+  --param-multipliers 0.5 \
+  --epochs 20
+```
 
-## Project Layout
+Scaling runs write ignored local artifacts under `reports/scaling/` and cache completed points under `.cache/scaling/`.
 
-The concise project layout is in [docs/overview.md](docs/overview.md).
+## Current Reported Result
 
-Live app:
-- [main.py](main.py): webcam loop, collection, prediction, preview routing.
-- [live_preview.py](live_preview.py): one-command preview-focused launcher.
-- [runtime_models.py](runtime_models.py): live model loading, switching, and multi-model prediction.
-- [ui.py](ui.py): debug overlay and gaze-preview rendering.
-- [collection_window.py](collection_window.py): fullscreen target collection UI.
+The current selected model line is `spatial_geom 0.5x`.
 
-Collection and features:
-- [collector.py](collector.py): session/capture/sample serialization.
-- [camera.py](camera.py): webcam and screen helpers.
-- [landmarker.py](landmarker.py): MediaPipe face landmarker setup.
-- [features.py](features.py): engineered eye/head/face features.
-- [eye_crops.py](eye_crops.py): aligned eye-crop extraction and saving.
+Main robustness result:
 
-Models and training:
-- [mapper.py](mapper.py): ridge baseline.
-- [vision_model.py](vision_model.py): neural gaze model architectures.
-- [vision_runtime.py](vision_runtime.py): live checkpoint loading and inference.
-- [vision_dataset.py](vision_dataset.py): dataset loading and sample tensors.
-- [vision_training.py](vision_training.py): shared frame-model training loop.
-- [train_vision_model.py](train_vision_model.py): trains one live checkpoint.
-- [scaling_experiments.py](scaling_experiments.py): canonical architecture/data/epoch/parameter sweeps.
-- [data_distribution_ablation.py](data_distribution_ablation.py): natural-vs-region-balanced training diagnostic.
-- [prediction_calibration_analysis.py](prediction_calibration_analysis.py): output-calibration and edge-compression diagnostic.
-- [smoke_test.py](smoke_test.py): no-webcam import, compile, and model-forward smoke test.
+- Metric: `session_holdout` capture MAE distance.
+- Reported local result: `134.9px`.
+- Dataset snapshot: single user, `1440x900` screen, `22` sessions.
+- Source: [docs/results.md](docs/results.md).
 
-Historical/support scripts:
-- [benchmark_models.py](benchmark_models.py): older benchmark runner for ridge, wide-concat, and matched-attention lines.
-- [eval_report.py](eval_report.py): ridge-only evaluation/report generator.
-- [vision_eval_report.py](vision_eval_report.py): older frame-model evaluation CLI; fold helpers are still reused by the canonical scaler.
+What this means:
 
-## Data Direction
+- The model was evaluated by holding out entire collection sessions.
+- This is stricter than a random or label-based split because it tests cross-session generalization.
+- It is the main result to cite when discussing current robustness.
 
-Near-term priority:
-- collect more independent sessions
-- vary lighting and posture
-- cover the full screen
-- avoid over-collecting many nearly identical captures in one sitting
+What this does not mean:
+
+- It is not a public benchmark result.
+- It is not externally reproducible from this repo alone because the raw personalized data and checkpoints are not committed.
+- It does not establish usability for another person, another webcam, another screen, or assistive-tech deployment.
+- It does not mean the model performs equally well at all screen regions; region holdout remains harder.
+
+Internal model-filtering result:
+
+- `label_holdout`: `spatial_geom 0.5x` reaches about `86.9px` capture MAE in the documented local sweep.
+- This split is useful for comparing architecture ideas quickly, but it is easier than the deployment-like case because train and eval captures can be from similar sessions.
+
+Stress-test result:
+
+- `region_holdout`: `spatial_geom 0.5x` reports about `163.9px` capture MAE.
+- This split holds out screen regions and tests spatial extrapolation. It is useful as a promotion gate, not as the default user-experience estimate.
+
+## Reproducibility Status
+
+| Path | Status |
+| --- | --- |
+| Install dependencies | Fully runnable from this repo. |
+| `python smoke_test.py` | Fully runnable without webcam, data, or checkpoints. |
+| `python live_preview.py` | Runnable with a webcam. Prediction requires a local trained checkpoint. |
+| `python main.py` collection | Runnable, but produces private personalized data under ignored `data/`. |
+| `python train_vision_model.py ...` | Runnable after local collection. Result depends on user, webcam, screen, lighting, and collection quality. |
+| `python scaling_experiments.py ...` | Runnable after local collection. Metrics are local to that dataset. |
+| Reported numbers in `docs/results.md` | Documented local snapshots, not exactly reproducible from the public repo. |
+
+Ignored local artifacts:
+
+- `data/`: raw personalized collection sessions.
+- `models/`: MediaPipe model download plus trained local gaze checkpoints.
+- `reports/`: generated experiment outputs.
+- `.cache/`: cached scaling fold results.
+- `logs/`: runtime logs if produced.
+
+This boundary is intentional. The current data is biometric-ish, user-specific, and screen-specific.
+
+## Main Limitations
+
+- Personalized only: there is no cross-user model claim.
+- Webcam-only signal is weak compared with dedicated eye trackers.
+- Results are sensitive to camera position, screen geometry, lighting, glasses, head pose, and collection consistency.
+- Edge and corner predictions show inward bias that simple output warping did not solve.
+- Session-holdout folds are imbalanced because collection sessions contain different amounts of data.
+- The live preview is a research/debug interface, not an accessibility-ready cursor replacement.
+- No public dataset, public checkpoint, or independent benchmark is included.
+
+## Documentation Map
+
+- [docs/reviewer_guide.md](docs/reviewer_guide.md): fastest path for a technical reviewer.
+- [docs/overview.md](docs/overview.md): architecture, entrypoints, core files, and support files.
+- [docs/results.md](docs/results.md): current local result snapshot and evaluation definitions.
+- [docs/data_distribution.md](docs/data_distribution.md): region-distribution ablation.
+- [docs/prediction_calibration.md](docs/prediction_calibration.md): edge-compression and output-calibration diagnostic.
+- [docs/demo_plan.md](docs/demo_plan.md): honest demo-video plan.
+- [EXPERIMENTS.md](EXPERIMENTS.md): historical model notes and discarded lines.
+
+## Core Entrypoints
+
+- `main.py`: webcam loop, collection, prediction, and preview routing.
+- `live_preview.py`: one-command preview-focused launcher.
+- `train_vision_model.py`: trains one live vision checkpoint.
+- `scaling_experiments.py`: canonical architecture/data/epoch/parameter sweeps.
+- `smoke_test.py`: no-webcam compile and model-forward smoke test.
 
 ## License
 
